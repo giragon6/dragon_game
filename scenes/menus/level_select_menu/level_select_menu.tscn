@@ -1,0 +1,176 @@
+[gd_scene load_steps=4 format=3 uid="uid://cxljt5skiby2k"]
+
+[sub_resource type="GDScript" id="GDScript_lgnvg"]
+script/source = "extends Control
+
+## Loads a simple ItemList node within a margin container. SceneLister updates
+## the available scenes in the directory provided. Activating a level will update
+## the GameState's current_level, and emit a signal. The main menu node will trigger
+## a load action from that signal.
+
+signal level_selected
+
+@onready var level_buttons_container: ItemList = %LevelButtonsContainer
+@onready var scene_lister: SceneLister = $SceneLister
+var level_paths : Array[String]
+
+func _ready() -> void:
+	add_levels_to_container()
+	
+## A fresh level list is propgated into the ItemList, and the file names are cleaned
+func add_levels_to_container() -> void:
+	level_buttons_container.clear()
+	level_paths.clear()
+	for file_path in scene_lister.files:
+		var file_name : String = file_path.get_file()  # e.g., \"level_1.tscn\"
+		file_name = file_name.trim_suffix(\".tscn\")  # Remove the \".tscn\" extension
+		file_name = file_name.replace(\"_\", \" \")  # Replace underscores with spaces
+		file_name = file_name.capitalize()  # Convert to proper case
+		var button_name := str(file_name)
+		level_buttons_container.add_item(button_name)
+		level_paths.append(file_path)
+
+func _on_level_buttons_container_item_activated(index: int) -> void:
+	level_selected.emit()
+"
+
+[sub_resource type="GDScript" id="GDScript_dnslt"]
+script/source = "extends Control
+## Node that captures UI focus when switching menus.
+##
+## This script assists with capturing UI focus when
+## opening, closing, or switching between menus.
+## When attached to a node, it will check if it was changed to visible
+## and if it should grab focus. If both are true, it will capture focus
+## on the first eligible node in its scene tree.
+
+## Hierarchical depth to search in the scene tree for a focusable control node.
+@export var search_depth : int = 1
+## If true, always capture focus when made visible.
+@export var enabled : bool = false
+## If true, capture focus if nothing currently is in focus.
+@export var null_focus_enabled : bool = true
+## If true, capture focus if there is a joypad detected.
+@export var joypad_enabled : bool = true
+## If true, capture focus if the mouse is hidden.
+@export var mouse_hidden_enabled : bool = true
+
+## Locks focus
+@export var lock : bool = false :
+	set(value):
+		var value_changed : bool = lock != value
+		lock = value
+		if value_changed and not lock:
+			update_focus()
+
+func _focus_first_search(control_node : Control, levels : int = 1) -> bool:
+	if control_node == null or !control_node.is_visible_in_tree():
+		return false
+	if control_node.focus_mode == FOCUS_ALL:
+		control_node.grab_focus()
+		if control_node is ItemList:
+			control_node.select(0)
+		return true
+	if levels < 1:
+		return false
+	var children = control_node.get_children()
+	for child in children:
+		if _focus_first_search(child, levels - 1):
+			return true
+	return false
+
+func focus_first() -> void:
+	_focus_first_search(self, search_depth)
+
+func update_focus() -> void:
+	if lock : return
+	if _is_visible_and_should_capture():
+		focus_first()
+
+func _should_capture_focus() -> bool:
+	return enabled or \\
+	(get_viewport().gui_get_focus_owner() == null and null_focus_enabled) or \\
+	(Input.get_connected_joypads().size() > 0 and joypad_enabled) or \\
+	(Input.mouse_mode not in [Input.MOUSE_MODE_VISIBLE, Input.MOUSE_MODE_CONFINED] and mouse_hidden_enabled)
+
+func _is_visible_and_should_capture() -> bool:
+	return is_visible_in_tree() and _should_capture_focus()
+
+func _on_visibility_changed() -> void:
+	call_deferred(\"update_focus\")
+
+func _ready() -> void:
+	if is_inside_tree():
+		update_focus()
+		connect(\"visibility_changed\", _on_visibility_changed)
+"
+
+[sub_resource type="GDScript" id="GDScript_jdgdv"]
+script/source = "@tool
+extends Node
+class_name SceneLister
+## Helper class for listing all the scenes in a directory.
+
+## List of paths to scene files.
+## Prefilled in the editor by selecting a directory.
+@export var files : Array[String]
+## Prefill files with any scenes in the directory.
+@export_dir var directory : String :
+	set(value):
+		directory = value
+		_refresh_files()
+
+func _refresh_files():
+	if not is_inside_tree() or directory.is_empty(): return
+	var dir_access = DirAccess.open(directory)
+	if dir_access:
+		files.clear()
+		for file in dir_access.get_files():
+			if not file.ends_with(\".tscn\"):
+				continue
+			files.append(directory + \"/\" + file)
+"
+
+[node name="LevelSelectMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = SubResource("GDScript_lgnvg")
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = SubResource("GDScript_dnslt")
+
+[node name="LevelButtonsContainer" type="ItemList" parent="Control"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -17.5
+offset_right = 200.0
+offset_bottom = 17.5
+grow_horizontal = 2
+grow_vertical = 2
+auto_height = true
+item_count = 1
+item_0/text = "1 - ExampleLevel"
+
+[node name="SceneLister" type="Node" parent="."]
+script = SubResource("GDScript_jdgdv")
+files = Array[String](["res://scenes/game_scene/levels/level_1.tscn", "res://scenes/game_scene/levels/level_2.tscn", "res://scenes/game_scene/levels/level_3.tscn"])
+directory = "res://scenes/game_scene/levels"
+
+[connection signal="item_activated" from="Control/LevelButtonsContainer" to="." method="_on_level_buttons_container_item_activated"]

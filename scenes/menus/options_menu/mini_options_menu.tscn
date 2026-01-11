@@ -1,0 +1,334 @@
+[gd_scene load_steps=7 format=3 uid="uid://coumy8afviwr3"]
+
+[ext_resource type="PackedScene" uid="uid://bsxh6v7j0257h" path="res://addons/maaacks_game_template/base/nodes/menus/options_menu/option_control/toggle_option_control.tscn" id="4_xg1r4"]
+
+[sub_resource type="GDScript" id="GDScript_uu5cc"]
+script/source = "extends Control
+
+@onready var mute_control = %MuteControl
+@onready var fullscreen_control = %FullscreenControl
+
+## Scene for adjusting the volume of the audio busses.
+@export var audio_control_scene : PackedScene
+## Optional names of audio busses that should be ignored.
+@export var hide_busses : Array[String]
+
+func _on_bus_changed(bus_value : float, bus_iter : int) -> void:
+	AppSettings.set_bus_volume(bus_iter, bus_value)
+
+func _add_audio_control(bus_name : String, bus_value : float, bus_iter : int) -> void:
+	if audio_control_scene == null or bus_name in hide_busses or bus_name.begins_with(AppSettings.SYSTEM_BUS_NAME_PREFIX):
+		return
+	var audio_control = audio_control_scene.instantiate()
+	%AudioControlContainer.call_deferred(\"add_child\", audio_control)
+	if audio_control is OptionControl:
+		audio_control.option_section = OptionControl.OptionSections.AUDIO
+		audio_control.option_name = bus_name
+		audio_control.value = bus_value
+		audio_control.connect(\"setting_changed\", _on_bus_changed.bind(bus_iter))
+
+func _add_audio_bus_controls() -> void:
+	for bus_iter in AudioServer.bus_count:
+		var bus_name : String = AppSettings.get_audio_bus_name(bus_iter)
+		var linear : float = AppSettings.get_bus_volume(bus_iter)
+		_add_audio_control(bus_name, linear, bus_iter)
+
+func _update_ui() -> void:
+	_add_audio_bus_controls()
+	mute_control.value = AppSettings.is_muted()
+	fullscreen_control.value = AppSettings.is_fullscreen(get_window())
+
+func _sync_with_config() -> void:
+	_update_ui()
+
+func _ready() -> void:
+	_sync_with_config()
+
+func _on_mute_control_setting_changed(value : bool) -> void:
+	AppSettings.set_mute(value)
+
+func _on_fullscreen_control_setting_changed(value : bool) -> void:
+	AppSettings.set_fullscreen_enabled(value, get_window())
+"
+
+[sub_resource type="GDScript" id="GDScript_p0l08"]
+script/source = "@tool
+class_name OptionControl
+extends Control
+## Generic scene for editing a value of the [PlayerConfig].
+
+signal setting_changed(value)
+
+enum OptionSections{
+	NONE,
+	INPUT,
+	AUDIO,
+	VIDEO,
+	GAME,
+	APPLICATION,
+	CUSTOM,
+}
+
+const OptionSectionNames : Dictionary = {
+	OptionSections.NONE : \"\",
+	OptionSections.INPUT : AppSettings.INPUT_SECTION,
+	OptionSections.AUDIO : AppSettings.AUDIO_SECTION,
+	OptionSections.VIDEO : AppSettings.VIDEO_SECTION,
+	OptionSections.GAME : AppSettings.GAME_SECTION,
+	OptionSections.APPLICATION : AppSettings.APPLICATION_SECTION,
+	OptionSections.CUSTOM : AppSettings.CUSTOM_SECTION,
+}
+
+## Locks config names in case of issues with inherited scenes.
+## Intentionally put first for initialization.
+@export var lock_config_names : bool = false
+## Defines text displayed to the user.
+@export var option_name : String :
+	set(value):
+		var _update_config : bool = option_name.to_pascal_case() == key and not lock_config_names
+		option_name = value
+		if is_inside_tree():
+			%OptionLabel.text = \"%s%s\" % [option_name, label_suffix]
+		if _update_config:
+			key = option_name.to_pascal_case()
+## Defines what section in the config file this option belongs under.
+@export var option_section : OptionSections :
+	set(value):
+		var _update_config : bool = OptionSectionNames[option_section] == section and not lock_config_names
+		option_section = value
+		if _update_config:
+			section = OptionSectionNames[option_section]
+
+@export_group(\"Config Names\")
+## Defines the key for this option variable in the config file.
+@export var key : String
+## Defines the section for this option variable in the config file.
+@export var section : String
+@export_group(\"Format\")
+@export var label_suffix : String = \" :\"
+@export_group(\"Properties\")
+## Defines whether the option is editable, or only visible by the user.
+@export var editable : bool = true : set = set_editable
+## Defines what kind of variable this option stores in the config file.
+@export var property_type : Variant.Type = TYPE_BOOL
+
+## It is advised to use an external editor to set the default value in the scene file.
+## Godot can experience a bug (caching issue?) that may undo changes.
+var default_value
+var _connected_nodes : Array
+
+func _on_setting_changed(value) -> void:
+	if Engine.is_editor_hint(): return
+	PlayerConfig.set_config(section, key, value)
+	setting_changed.emit(value)
+
+func _get_setting(default : Variant = null) -> Variant:
+	return PlayerConfig.get_config(section, key, default)
+
+func _connect_option_inputs(node) -> void:
+	if node in _connected_nodes: return
+	if node is Button:
+		if node is OptionButton:
+			node.item_selected.connect(_on_setting_changed)
+		elif node is ColorPickerButton:
+			node.color_changed.connect(_on_setting_changed)
+		else:
+			node.toggled.connect(_on_setting_changed)
+		_connected_nodes.append(node)
+	if node is Range:
+		node.value_changed.connect(_on_setting_changed)
+		_connected_nodes.append(node)
+	if node is LineEdit or node is TextEdit:
+		node.text_changed.connect(_on_setting_changed)
+		_connected_nodes.append(node)
+
+func set_value(value : Variant) -> void:
+	if value == null:
+		return
+	for node in get_children():
+		if node is Button:
+			if node is OptionButton:
+				node.select(value as int)
+			elif node is ColorPickerButton:
+				node.color = value as Color
+			else:
+				node.button_pressed = value as bool
+		if node is Range:
+			node.value = value as float
+		if node is LineEdit or node is TextEdit:
+			node.text = \"%s\" % value
+
+func set_editable(value : bool = true) -> void:
+	editable = value
+	for node in get_children():
+		if node is Button:
+			node.disabled = !editable
+		if node is Slider or node is SpinBox or node is LineEdit or node is TextEdit:
+			node.editable = editable
+
+func _ready() -> void:
+	lock_config_names = lock_config_names
+	option_section = option_section
+	option_name = option_name
+	property_type = property_type
+	default_value = default_value
+	set_value(_get_setting(default_value))
+	for child in get_children():
+		_connect_option_inputs(child)
+	child_entered_tree.connect(_connect_option_inputs)
+
+func _set(property : StringName, value : Variant) -> bool:
+	if property == \"value\":
+		set_value(value)
+		return true
+	return false
+
+func _get_property_list() -> Array[Dictionary]:
+	return [
+		{ \"name\": \"value\", \"type\": property_type, \"usage\": PROPERTY_USAGE_NONE},
+		{ \"name\": \"default_value\", \"type\": property_type}
+	]
+"
+
+[sub_resource type="PackedScene" id="PackedScene_oo80c"]
+_bundled = {
+"conn_count": 0,
+"conns": PackedInt32Array(),
+"editable_instances": [],
+"names": PackedStringArray("OptionControl", "HBoxContainer", "custom_minimum_size", "offset_right", "offset_bottom", "script", "default_value", "OptionLabel", "Label", "unique_name_in_owner", "layout_mode", "size_flags_horizontal", "text", "vertical_alignment"),
+"node_count": 2,
+"node_paths": [NodePath(".")],
+"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 5, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 0, 1073741824, 0, 8, 7, -1, 5, 9, 5, 10, 6, 11, 7, 12, 8, 13, 9, 0),
+"variants": [Vector2(0, 40), 400.0, 40.0, SubResource("GDScript_p0l08"), false, true, 2, 3, " :", 1],
+"version": 3
+}
+
+[sub_resource type="PackedScene" id="PackedScene_uxa2e"]
+_bundled = {
+"base_scene": 0,
+"conn_count": 0,
+"conns": PackedInt32Array(),
+"editable_instances": [],
+"names": PackedStringArray("OptionControl", "custom_minimum_size", "offset_bottom", "property_type", "default_value", "HSlider", "HSlider", "custom_minimum_size", "layout_mode", "size_flags_vertical", "max_value", "step", "value", "tick_count", "ticks_on_borders"),
+"node_count": 2,
+"node_paths": [NodePath(".")],
+"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 4, 1, 1, 2, 2, 3, 3, 4, 4, 0, 1073741824, 0, 6, 524293, -1, 8, 7, 5, 8, 6, 9, 7, 10, 8, 11, 9, 12, 10, 13, 11, 14, 12, 0),
+"variants": [SubResource("PackedScene_oo80c"), Vector2(0, 28), 28.0, 3, 1.0, Vector2(256, 0), 2, 4, 1.0, 0.05, 1.0, 11, true],
+"version": 3
+}
+
+[sub_resource type="GDScript" id="GDScript_dnslt"]
+script/source = "extends Control
+## Node that captures UI focus when switching menus.
+##
+## This script assists with capturing UI focus when
+## opening, closing, or switching between menus.
+## When attached to a node, it will check if it was changed to visible
+## and if it should grab focus. If both are true, it will capture focus
+## on the first eligible node in its scene tree.
+
+## Hierarchical depth to search in the scene tree for a focusable control node.
+@export var search_depth : int = 1
+## If true, always capture focus when made visible.
+@export var enabled : bool = false
+## If true, capture focus if nothing currently is in focus.
+@export var null_focus_enabled : bool = true
+## If true, capture focus if there is a joypad detected.
+@export var joypad_enabled : bool = true
+## If true, capture focus if the mouse is hidden.
+@export var mouse_hidden_enabled : bool = true
+
+## Locks focus
+@export var lock : bool = false :
+	set(value):
+		var value_changed : bool = lock != value
+		lock = value
+		if value_changed and not lock:
+			update_focus()
+
+func _focus_first_search(control_node : Control, levels : int = 1) -> bool:
+	if control_node == null or !control_node.is_visible_in_tree():
+		return false
+	if control_node.focus_mode == FOCUS_ALL:
+		control_node.grab_focus()
+		if control_node is ItemList:
+			control_node.select(0)
+		return true
+	if levels < 1:
+		return false
+	var children = control_node.get_children()
+	for child in children:
+		if _focus_first_search(child, levels - 1):
+			return true
+	return false
+
+func focus_first() -> void:
+	_focus_first_search(self, search_depth)
+
+func update_focus() -> void:
+	if lock : return
+	if _is_visible_and_should_capture():
+		focus_first()
+
+func _should_capture_focus() -> bool:
+	return enabled or \\
+	(get_viewport().gui_get_focus_owner() == null and null_focus_enabled) or \\
+	(Input.get_connected_joypads().size() > 0 and joypad_enabled) or \\
+	(Input.mouse_mode not in [Input.MOUSE_MODE_VISIBLE, Input.MOUSE_MODE_CONFINED] and mouse_hidden_enabled)
+
+func _is_visible_and_should_capture() -> bool:
+	return is_visible_in_tree() and _should_capture_focus()
+
+func _on_visibility_changed() -> void:
+	call_deferred(\"update_focus\")
+
+func _ready() -> void:
+	if is_inside_tree():
+		update_focus()
+		connect(\"visibility_changed\", _on_visibility_changed)
+"
+
+[node name="MiniOptionsMenu" type="VBoxContainer"]
+custom_minimum_size = Vector2(400, 260)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -130.0
+offset_right = 200.0
+offset_bottom = 130.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 8
+alignment = 1
+script = SubResource("GDScript_uu5cc")
+audio_control_scene = SubResource("PackedScene_uxa2e")
+
+[node name="AudioControlContainer" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+script = SubResource("GDScript_dnslt")
+search_depth = 2
+
+[node name="MuteControl" parent="." instance=ExtResource("4_xg1r4")]
+unique_name_in_owner = true
+layout_mode = 2
+option_name = "Mute"
+option_section = 2
+key = "Mute"
+section = "AudioSettings"
+
+[node name="FullscreenControl" parent="." instance=ExtResource("4_xg1r4")]
+unique_name_in_owner = true
+layout_mode = 2
+option_name = "Fullscreen"
+option_section = 3
+key = "FullscreenEnabled"
+section = "VideoSettings"
+
+[connection signal="setting_changed" from="MuteControl" to="." method="_on_mute_control_setting_changed"]
+[connection signal="setting_changed" from="FullscreenControl" to="." method="_on_fullscreen_control_setting_changed"]
