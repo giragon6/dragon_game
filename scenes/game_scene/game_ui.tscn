@@ -1,5 +1,6 @@
-[gd_scene load_steps=59 format=3 uid="uid://dgtslvp173nhx"]
+[gd_scene load_steps=62 format=3 uid="uid://dgtslvp173nhx"]
 
+[ext_resource type="Script" uid="uid://b2xtyuha3i4eq" path="res://scenes/game_scene/items_controller.gd" id="2_seekm"]
 [ext_resource type="PackedScene" uid="uid://cmay2p81tduat" path="res://scenes/loading_screen/level_loading_screen.tscn" id="9_i7m4m"]
 
 [sub_resource type="GDScript" id="GDScript_6mwjj"]
@@ -2505,6 +2506,12 @@ func _ready() -> void:
 	msaa_3d = anti_aliasing as MSAA
 "
 
+[sub_resource type="InputEventKey" id="InputEventKey_seekm"]
+keycode = 69
+
+[sub_resource type="Shortcut" id="Shortcut_ejf1p"]
+events = [SubResource("InputEventKey_seekm")]
+
 [node name="GameUI" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -2558,3 +2565,13 @@ audio_listener_enable_3d = true
 size = Vector2i(1152, 648)
 render_target_update_mode = 4
 script = SubResource("GDScript_ud2if")
+
+[node name="ItemsController" type="Node" parent="." node_paths=PackedStringArray("focused_viewport")]
+script = ExtResource("2_seekm")
+focused_viewport = NodePath("../ViewportContainer/ConfigurableSubViewport")
+
+[node name="InventoryButton" type="Button" parent="."]
+layout_mode = 0
+offset_right = 63.0
+offset_bottom = 61.0
+shortcut = SubResource("Shortcut_ejf1p")
