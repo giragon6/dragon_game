@@ -60,7 +60,7 @@ func _load_main_menu() -> void:
 
 func _find_in_scene_lister(level_path : String) -> int:
 	if not scene_lister: return -1
-	level_path = ResourceUID.ensure_path(level_path)
+	#level_path = ResourceUID.ensure_path(level_path)
 	return scene_lister.files.find(level_path)
 
 func is_on_last_level() -> bool:

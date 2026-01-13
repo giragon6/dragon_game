@@ -5,6 +5,10 @@ const STATE_NAME : String = "GameState"
 const FILE_PATH = "res://scripts/game_state.gd"
 
 @export var level_states : Dictionary = {}
+
+@export var base_state : BaseState
+@export var wilds_state : WildsState
+
 @export var current_level_path : String
 @export var checkpoint_level_path : String
 @export var total_games_played : int
@@ -41,12 +45,6 @@ static func get_checkpoint_level_path() -> String:
 		return ""
 	var game_state := get_or_create_state()
 	return game_state.checkpoint_level_path
-
-static func get_levels_reached() -> int:
-	if not has_game_state(): 
-		return 0
-	var game_state := get_or_create_state()
-	return game_state.level_states.size()
 
 static func set_checkpoint_level_path(level_path : String) -> void:
 	var game_state := get_or_create_state()

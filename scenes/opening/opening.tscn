@@ -9,7 +9,10 @@ load_path = "res://.godot/imported/logo_vertical_color_dark.png-056a6f9bbcf3b5b4
 next_scene_path = "res://scenes/menus/main_menu/main_menu_with_animations.tscn"
 images = Array[Texture2D]([SubResource("CompressedTexture2D_l1wh1")])
 
-[node name="ImagesContainer" parent="." index="0"]
+[node name="BackgroundMusicPlayer" parent="." index="0"]
+bus = &"Master"
+
+[node name="ImagesContainer" parent="." index="1"]
 theme_override_constants/margin_left = 64
 theme_override_constants/margin_top = 64
 theme_override_constants/margin_right = 64
