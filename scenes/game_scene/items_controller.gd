@@ -7,10 +7,14 @@ var inventory_menu : Node
 
 func _unhandled_input(event : InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
-		if inventory_menu.visible: return
+		if inventory_menu.visible: 
+			inventory_menu.hide()
+			return
 	if event.is_action_pressed("inventory"):
 		print("Inventory opened")
-		if inventory_menu.visible: return
+		if inventory_menu.visible: 
+			inventory_menu.hide()
+			return
 		if not focused_viewport:
 			focused_viewport = get_viewport()
 		var _initial_focus_control = focused_viewport.gui_get_focus_owner()
@@ -25,4 +29,6 @@ func _unhandled_input(event : InputEvent) -> void:
 func _ready() -> void:
 	inventory_menu = inventory_menu_packed.instantiate()
 	inventory_menu.hide()
+	inventory_menu.position = self.get_viewport().size / 2
 	get_tree().current_scene.call_deferred("add_child", inventory_menu)
+	

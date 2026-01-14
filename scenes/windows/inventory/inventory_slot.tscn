@@ -1,10 +1,13 @@
-[gd_scene load_steps=2 format=3 uid="uid://ci5rxp5mep8al"]
+[gd_scene load_steps=3 format=3 uid="uid://ci5rxp5mep8al"]
+
+[ext_resource type="Script" uid="uid://cq58gu5jusro4" path="res://scenes/windows/inventory/inventory_slot.gd" id="1_8yvn3"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_bhu3c"]
 font_size = 32
 
 [node name="InventorySlot" type="Button"]
 custom_minimum_size = Vector2(64, 64)
+script = ExtResource("1_8yvn3")
 
 [node name="Icon" type="TextureRect" parent="."]
 layout_mode = 1
@@ -23,7 +26,7 @@ mouse_filter = 2
 expand_mode = 1
 metadata/_edit_use_anchors_ = true
 
-[node name="Label" type="Label" parent="."]
+[node name="QuantityText" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0

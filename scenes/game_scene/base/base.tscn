@@ -1,6 +1,8 @@
-[gd_scene format=3 uid="uid://drnsfx7e8pfql"]
+[gd_scene load_steps=2 format=3 uid="uid://drnsfx7e8pfql"]
 
-[node name="Base" type="Node2D"]
+[ext_resource type="PackedScene" uid="uid://dgtslvp173nhx" path="res://scenes/game_scene/game_ui.tscn" id="1_tll21"]
+
+[node name="Base" type="Node2D" groups=["Persist"]]
 
 [node name="TileMapLayer" type="TileMapLayer" parent="."]
 
@@ -8,3 +10,5 @@
 offset_right = 111.0
 offset_bottom = 63.0
 text = "BASE"
+
+[node name="GameUI" parent="." instance=ExtResource("1_tll21")]

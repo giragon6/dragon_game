@@ -1,6 +1,8 @@
-[gd_scene load_steps=62 format=3 uid="uid://dgtslvp173nhx"]
+[gd_scene load_steps=23 format=3 uid="uid://dgtslvp173nhx"]
 
+[ext_resource type="PackedScene" uid="uid://dcvymjcaysbj4" path="res://scenes/windows/pause_menu.tscn" id="1_ejf1p"]
 [ext_resource type="Script" uid="uid://b2xtyuha3i4eq" path="res://scenes/game_scene/items_controller.gd" id="2_seekm"]
+[ext_resource type="PackedScene" uid="uid://duf7snhjjldxf" path="res://scenes/windows/inventory/inventory_menu.tscn" id="4_dnslt"]
 [ext_resource type="PackedScene" uid="uid://cmay2p81tduat" path="res://scenes/loading_screen/level_loading_screen.tscn" id="9_i7m4m"]
 
 [sub_resource type="GDScript" id="GDScript_6mwjj"]
@@ -33,20 +35,227 @@ func _ready() -> void:
 	get_tree().current_scene.call_deferred(\"add_child\", pause_menu)
 "
 
-[sub_resource type="GDScript" id="GDScript_seekm"]
-script/source = "extends CanvasLayer
+[sub_resource type="GDScript" id="GDScript_uplwd"]
+script/source = "@tool
+class_name LevelLoader
+extends Node
+## Loads scenes into a container.
 
-@onready var pause_menu = %PauseMenu
+signal level_load_started
+signal level_loaded
+signal level_ready
 
-func _on_pause_menu_hidden():
-	hide()
+## Container where the level instance will be added.
+@export var level_container : Node
+## Optional reference to a loading screen in the scene.
+@export var level_loading_screen : LoadingScreen
+@export_group(\"Debugging\")
+@export var current_level : Node
 
-func _on_visibility_changed():
-	if visible:
-		pause_menu.show()
+var is_loading : bool = false
 
-func _ready():
-	visibility_changed.connect(_on_visibility_changed)
+func _attach_level(level_resource : Resource):
+	assert(level_container != null, \"level_container is null\")
+	var instance = level_resource.instantiate()
+	level_container.call_deferred(\"add_child\", instance)
+	return instance
+
+func load_level(level_path : String):
+	if is_loading : return
+	if is_instance_valid(current_level):
+		current_level.queue_free()
+		await current_level.tree_exited
+		current_level = null
+	is_loading = true
+	SceneLoader.load_scene(level_path, true)
+	if level_loading_screen:
+		level_loading_screen.reset()
+	level_load_started.emit()
+	await SceneLoader.scene_loaded
+	is_loading = false
+	current_level = _attach_level(SceneLoader.get_resource())
+	if level_loading_screen:
+		level_loading_screen.close()
+	level_loaded.emit()
+	await current_level.ready
+	level_ready.emit()
+"
+
+[sub_resource type="GDScript" id="GDScript_jckqn"]
+script/source = "class_name LevelManager
+extends Node
+## Manage level changes in games.
+##
+## A helper script to assign to a node in a scene.
+## It works with a level loader and can open menus when players win or lose.
+## It can either be assigned a starting level path or a scene lister.
+## It can detect signals from levels to change levels in an open-world.
+## With a scene lister, it will instead traverse through levels linearly.
+
+## Required reference to a level loader in the scene.
+@export var level_loader : LevelLoader
+## Optional path to a starting level scene.
+## Required if there is no scene lister.
+@export_file var starting_level_path : String
+## Optional reference to a scene lister in the scene.
+## Required if there is no starting level path.
+@export var scene_lister : SceneLister
+## Whether to load the starting level when ready.
+@export var auto_load : bool = true
+@export_group(\"Scenes\")
+## Path to a main menu scene.
+@export_file(\"*.tscn\") var main_menu_scene_path : String
+## Optional path to an ending scene.
+@export_file(\"*.tscn\") var ending_scene_path : String
+## Optional screen to be shown after the game is won.
+@export var game_won_scene : PackedScene
+## Optional screen to be shown after the level is lost.
+@export var level_lost_scene : PackedScene
+## Optional screen to be shown after the level is won.
+@export var level_won_scene : PackedScene
+
+## Reference to the current level node.
+var current_level : Node
+var current_level_path : String : set = set_current_level_path
+var checkpoint_level_path : String : set = set_checkpoint_level_path
+
+func set_current_level_path(value : String) -> void:
+	current_level_path = value
+
+func set_checkpoint_level_path(value : String) -> void:
+	checkpoint_level_path = value
+
+func _try_connecting_signal_to_node(node : Node, signal_name : String, callable : Callable) -> void:
+	if node.has_signal(signal_name) and not node.is_connected(signal_name, callable):
+		node.connect(signal_name, callable)
+
+func _try_connecting_signal_to_level(signal_name : String, callable : Callable) -> void:
+	_try_connecting_signal_to_node(current_level, signal_name, callable)
+
+func get_main_menu_scene_path() -> String:
+	return main_menu_scene_path
+
+func _load_main_menu() -> void:
+	SceneLoader.load_scene(get_main_menu_scene_path())
+
+func _find_in_scene_lister(level_path : String) -> int:
+	if not scene_lister: return -1
+	level_path = ResourceUID.ensure_path(level_path)
+	return scene_lister.files.find(level_path)
+
+func is_on_last_level() -> bool:
+	var current_level_id = _find_in_scene_lister(current_level_path)
+	return current_level_id > -1 and current_level_id == scene_lister.files.size() - 1
+
+func get_relative_level_path(offset : int = 1) -> String:
+	var current_level_id := _find_in_scene_lister(current_level_path)
+	if current_level_id > -1:
+		if current_level_id >= max(0, -(offset)) and current_level_id < scene_lister.files.size() - max(0, offset):
+			current_level_id += offset
+			return scene_lister.files[current_level_id]
+	return \"\"
+
+func get_next_level_path() -> String:
+	return get_relative_level_path(1)
+
+func get_prev_level_path() -> String:
+	return get_relative_level_path(-1)
+
+func get_ending_scene_path() -> String:
+	return ending_scene_path
+
+func _load_ending() -> void:
+	if not get_ending_scene_path().is_empty():
+		SceneLoader.load_scene(get_ending_scene_path())
+	else:
+		_load_main_menu()
+
+func _on_level_lost() -> void:
+	if level_lost_scene:
+		var instance = level_lost_scene.instantiate()
+		get_tree().current_scene.add_child(instance)
+		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
+		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
+	else:
+		_reload_level()
+
+func get_checkpoint_level_path() -> String:
+	if checkpoint_level_path.is_empty():
+		if scene_lister:
+			return scene_lister.files.front()
+		if not starting_level_path.is_empty():
+			return starting_level_path
+	return checkpoint_level_path
+
+func load_level(level_path : String) -> void:
+	current_level_path = level_path
+	level_loader.load_level(level_path)
+
+func _load_checkpoint_level() -> void:
+	load_level(get_checkpoint_level_path())
+
+func _reload_level() -> void:
+	load_level(current_level_path)
+
+func _load_win_screen_or_ending() -> void:
+	if game_won_scene:
+		var instance = game_won_scene.instantiate()
+		get_tree().current_scene.add_child(instance)
+		_try_connecting_signal_to_node(instance, &\"continue_pressed\", _load_ending)
+		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
+		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
+	else:
+		_load_ending()
+
+func _load_level_won_screen_or_checkpoint() -> void:
+	if level_won_scene:
+		var instance = level_won_scene.instantiate()
+		get_tree().current_scene.add_child(instance)
+		_try_connecting_signal_to_node(instance, &\"continue_pressed\", _load_checkpoint_level)
+		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
+		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
+	else:
+		_load_checkpoint_level()
+
+func _on_level_won(next_level_path : String = \"\"):
+	if next_level_path.is_empty():
+		next_level_path = get_next_level_path()
+	if next_level_path.is_empty():
+		_load_win_screen_or_ending()
+	else:
+		checkpoint_level_path = next_level_path
+		_load_level_won_screen_or_checkpoint()
+
+func _on_level_changed(next_level_path : String):
+	checkpoint_level_path = next_level_path
+	_load_checkpoint_level()
+
+func _connect_level_signals() -> void:
+	_try_connecting_signal_to_level(&\"level_lost\", _on_level_lost)
+	_try_connecting_signal_to_level(&\"level_won\", _on_level_won)
+	_try_connecting_signal_to_level(&\"level_changed\", _on_level_changed)
+
+func _on_level_loader_level_loaded() -> void:
+	current_level = level_loader.current_level
+	await current_level.ready
+	_connect_level_signals()
+
+func _on_level_loader_level_load_started() -> void:
+	pass
+
+func _on_level_loader_level_ready() -> void:
+	pass
+
+func _auto_load() -> void:
+	if auto_load:
+		_load_checkpoint_level()
+
+func _ready() -> void:
+	if Engine.is_editor_hint(): return
+	level_loader.level_loaded.connect(_on_level_loader_level_loaded)
+	level_loader.level_ready.connect(_on_level_loader_level_ready)
+	level_loader.level_load_started.connect(_on_level_loader_level_load_started)
+	_auto_load()
 "
 
 [sub_resource type="GDScript" id="GDScript_ejf1p"]
@@ -296,904 +505,34 @@ _bundled = {
 "version": 3
 }
 
-[sub_resource type="GDScript" id="GDScript_vbgr5"]
+[sub_resource type="GDScript" id="GDScript_48t47"]
 script/source = "@tool
 extends OverlaidWindow
 
-@export var options_menu_scene : PackedScene
-## Path to a main menu scene.
-@export_file(\"*.tscn\") var main_menu_scene_path : String
-@export_node_path(&\"ConfirmationOverlaidWindow\") var restart_confirmation_node_path : NodePath
-@export_node_path(&\"ConfirmationOverlaidWindow\") var main_menu_confirmation_node_path : NodePath
-@export_node_path(&\"ConfirmationOverlaidWindow\") var exit_confirmation_node_path : NodePath
-@export var menu_container_node_path : NodePath = ^\"..\"
+signal continue_pressed
+signal main_menu_pressed
 
-@onready var restart_confirmation : ConfirmationOverlaidWindow = get_node(restart_confirmation_node_path)
-@onready var main_menu_confirmation : ConfirmationOverlaidWindow = get_node(main_menu_confirmation_node_path)
-@onready var exit_confirmation : ConfirmationOverlaidWindow = get_node(exit_confirmation_node_path)
-@onready var menu_container : Node = get_node(menu_container_node_path)
-@onready var options_button = %OptionsButton
-@onready var main_menu_button = %MainMenuButton
-@onready var exit_button = %ExitButton
+func _ready():
+	if OS.has_feature(\"web\"):
+		%ExitButton.hide()
 
-var open_window : Node
-var _ignore_first_cancel : bool = false
+func _on_exit_button_pressed():
+	%ExitConfirmation.show()
 
-func get_main_menu_scene_path() -> String:
-	return main_menu_scene_path
+func _on_main_menu_button_pressed():
+	%MainMenuConfirmation.show()
 
-func close_window() -> void:
-	if open_window != null:
-		if open_window.has_method(\"close\"):
-			open_window.close()
-		else:
-			open_window.hide()
-		open_window = null
-
-func _disable_focus() -> void:
-	for child in %MenuButtons.get_children():
-		if child is Control:
-			child.focus_mode = FOCUS_NONE
-
-func _enable_focus() -> void:
-	for child in %MenuButtons.get_children():
-		if child is Control:
-			child.focus_mode = FOCUS_ALL
-
-func _load_scene(scene_path: String) -> void:
-	_scene_tree.paused = false
-	SceneLoader.load_scene(scene_path)
-
-func _show_window(window : Control) -> void:
-	_disable_focus.call_deferred()
-	window.show()
-	open_window = window
-	await window.hidden
-	open_window = null
-	_enable_focus.call_deferred()
-
-func _load_and_show_menu(scene : PackedScene) -> void:
-	var window_instance : Control = scene.instantiate()
-	window_instance.visible = false
-	menu_container.add_child.call_deferred(window_instance)
-	await _show_window(window_instance)
-	window_instance.queue_free()
-
-func _handle_cancel_input() -> void:
-	if _ignore_first_cancel:
-		_ignore_first_cancel = false
-		return
-	if open_window != null:
-		close_window()
-	else:
-		super._handle_cancel_input()
-
-func show() -> void:
-	super.show()
-	if Input.is_action_pressed(\"ui_cancel\"):
-		_ignore_first_cancel = true
-
-func _refresh_exit_button() -> void:
-	exit_button.visible = !OS.has_feature(\"web\")
-
-func _refresh_options_button() -> void:
-	options_button.visible = options_menu_scene != null
-
-func _refresh_main_menu_button() -> void:
-	main_menu_button.visible = !get_main_menu_scene_path().is_empty()
-
-func _ready() -> void:
-	_refresh_exit_button()
-	_refresh_options_button()
-	_refresh_main_menu_button()
-	restart_confirmation.confirmed.connect(_on_restart_confirmation_confirmed)
-	main_menu_confirmation.confirmed.connect(_on_main_menu_confirmation_confirmed)
-	exit_confirmation.confirmed.connect(_on_exit_confirmation_confirmed)
-
-func _on_restart_button_pressed() -> void:
-	_show_window(restart_confirmation)
-
-func _on_options_button_pressed() -> void:
-	_load_and_show_menu(options_menu_scene)
-
-func _on_main_menu_button_pressed() -> void:
-	_show_window(main_menu_confirmation)
-
-func _on_exit_button_pressed() -> void:
-	_show_window(exit_confirmation)
-
-func _on_restart_confirmation_confirmed() -> void:
-	SceneLoader.reload_current_scene()
+func _on_close_button_pressed():
+	continue_pressed.emit()
 	close()
 
 func _on_main_menu_confirmation_confirmed():
-	_load_scene(get_main_menu_scene_path())
+	main_menu_pressed.emit()
+	close()
 
 func _on_exit_confirmation_confirmed():
 	get_tree().quit()
 "
-
-[sub_resource type="GDScript" id="GDScript_bqcs8"]
-script/source = "@tool
-class_name OverlaidWindowContainer
-extends OverlaidWindow
-
-var instance : Node
-@onready var scene_container : Container = %SceneContainer
-
-@export var packed_scene : PackedScene :
-	set(value):
-		packed_scene = value
-		if is_inside_tree():
-			for child in scene_container.get_children():
-				child.queue_free()
-			if packed_scene:
-				instance = packed_scene.instantiate()
-				scene_container.add_child(instance)
-
-func _ready() -> void:
-	packed_scene = packed_scene
-"
-
-[sub_resource type="PackedScene" id="PackedScene_onvsj"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("OverlaidWindowSceneContainer", "script", "packed_scene", "SceneContainer", "MarginContainer", "unique_name_in_owner", "layout_mode", "size_flags_vertical"),
-"node_count": 2,
-"node_paths": [NodePath("./ContentContainer/BoxContainer/BodyMargin")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 2, 1, 1, 2, 2, 0, 1073741824, 0, 4, 524291, -1, 3, 5, 3, 6, 4, 7, 5, 0),
-"variants": [SubResource("PackedScene_ul61k"), SubResource("GDScript_bqcs8"), null, true, 2, 3],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_8qp3c"]
-script/source = "extends TabContainer
-## Applies UI page up and page down inputs to tab switching.
-
-func _unhandled_input(event : InputEvent) -> void:
-	if not is_visible_in_tree():
-		return
-	if event.is_action_pressed(\"ui_page_down\"):
-		current_tab = (current_tab+1) % get_tab_count()
-	elif event.is_action_pressed(\"ui_page_up\"):
-		if current_tab == 0:
-			current_tab = get_tab_count()-1
-		else:
-			current_tab = current_tab-1
-"
-
-[sub_resource type="GDScript" id="GDScript_bmy5n"]
-script/source = "@tool
-extends Control
-
-const ALREADY_ASSIGNED_TEXT : String = \"{key} already assigned to {action}.\"
-const ONE_INPUT_MINIMUM_TEXT : String = \"%s must have at least one key or button assigned.\"
-const KEY_DELETION_TEXT : String = \"Are you sure you want to remove {key} from {action}?\"
-
-@export_enum(\"List\", \"Tree\") var remapping_mode : int = 0 :
-	set(value):
-		remapping_mode = value
-		if is_inside_tree():
-			match(remapping_mode):
-				0:
-					%InputActionsList.show()
-					%InputActionsTree.hide()
-				1:
-					%InputActionsList.hide()
-					%InputActionsTree.show()
-
-@onready var assignment_placeholder_text = $KeyAssignmentWindow.text
-
-var last_input_readable_name
-
-func _ready() -> void:
-	remapping_mode = remapping_mode
-
-func _add_action_event() -> void:
-	var last_input_event = $KeyAssignmentWindow.last_input_event
-	last_input_readable_name = $KeyAssignmentWindow.last_input_text
-	match(remapping_mode):
-		0:
-			%InputActionsList.add_action_event(last_input_readable_name, last_input_event)
-		1:
-			%InputActionsTree.add_action_event(last_input_readable_name, last_input_event)
-
-func _remove_action_event(item : TreeItem) -> void:
-	%InputActionsTree.remove_action_event(item)
-
-func _on_reset_button_pressed() -> void:
-	$ResetConfirmation.show()
-
-func _on_key_deletion_confirmation_confirmed() -> void:
-	var editing_item = %InputActionsTree.editing_item
-	if is_instance_valid(editing_item):
-		_remove_action_event(editing_item)
-
-func _on_key_assignment_window_confirmed() -> void:
-	_add_action_event()
-
-func _open_key_assignment_window(action_name : String, readable_input_name : String = assignment_placeholder_text) -> void:
-	$KeyAssignmentWindow.title = tr(\"Assign Key for {action}\").format({action = action_name})
-	$KeyAssignmentWindow.text = readable_input_name
-	$KeyAssignmentWindow.confirm_button.disabled = true
-	$KeyAssignmentWindow.show()
-
-func _on_input_actions_tree_add_button_clicked(action_name) -> void:
-	_open_key_assignment_window(action_name)
-
-func _on_input_actions_tree_remove_button_clicked(action_name, input_name) -> void:
-	$KeyDeletionConfirmation.title = tr(\"Remove Key for {action}\").format({action = action_name})
-	$KeyDeletionConfirmation.text = tr(KEY_DELETION_TEXT).format({key = input_name, action = action_name})
-	$KeyDeletionConfirmation.show()
-
-func _popup_already_assigned(action_name, input_name) -> void:
-	$AlreadyAssignedMessage.text = tr(ALREADY_ASSIGNED_TEXT).format({key = input_name, action = action_name})
-	$AlreadyAssignedMessage.show()
-
-func _popup_minimum_reached(action_name : String) -> void:
-	$OneInputMinimumMessage.text = ONE_INPUT_MINIMUM_TEXT % action_name
-	$OneInputMinimumMessage.show()
-
-func _on_input_actions_tree_already_assigned(action_name, input_name) -> void:
-	_popup_already_assigned.call_deferred(action_name, input_name)
-
-func _on_input_actions_tree_minimum_reached(action_name) -> void:
-	_popup_minimum_reached.call_deferred(action_name)
-
-func _on_input_actions_list_already_assigned(action_name, input_name) -> void:
-	_popup_already_assigned.call_deferred(action_name, input_name)
-
-func _on_input_actions_list_minimum_reached(action_name) -> void:
-	_popup_minimum_reached.call_deferred(action_name)
-
-func _on_input_actions_list_button_clicked(action_name, readable_input_name) -> void:
-	_open_key_assignment_window(action_name, readable_input_name)
-
-func _on_reset_confirmation_confirmed() -> void:
-	match(remapping_mode):
-		0:
-			%InputActionsList.reset()
-		1:
-			%InputActionsTree.reset()
-"
-
-[sub_resource type="GDScript" id="GDScript_7aihr"]
-script/source = "@tool
-class_name InputActionsList
-extends Container
-## Scene to list the input actions out as buttons in a grid format.
-
-const EMPTY_INPUT_ACTION_STRING = \" \"
-
-signal already_assigned(action_name : String, input_name : String)
-signal minimum_reached(action_name : String)
-signal button_clicked(action_name : String, readable_input_name : String)
-
-const BUTTON_NAME_GROUP_STRING : String = \"%s:%d\"
-
-## If true, lists action names on the vertical axis.
-@export var vertical : bool = true :
-	set(value):
-		vertical = value
-		if is_inside_tree():
-			%ParentBoxContainer.vertical = vertical
-## The number of inputs to make editable per action name.
-@export_range(1, 5) var action_groups : int = 2
-## The header to each input action group.
-@export var action_group_names : Array[String]
-## The names of the action names that should be listed for editing.
-@export var input_action_names : Array[StringName] :
-	set(value):
-		var _value_changed = input_action_names != value
-		input_action_names = value
-		if _value_changed:
-			_refresh_readable_action_names()
-## The readable names of the action names that should be listed for editing.
-@export var readable_action_names : Array[String] :
-	set(value):
-		var _value_changed = readable_action_names != value
-		readable_action_names = value
-		if _value_changed:
-			var _new_action_name_map : Dictionary
-			for iter in range(input_action_names.size()):
-				var _input_name : StringName = input_action_names[iter]
-				var _readable_name : String = readable_action_names[iter]
-				_new_action_name_map[_input_name] = _readable_name
-			action_name_map = _new_action_name_map
-## If true, capitalizes action names in order to make them readable.
-@export var capitalize_action_names : bool = true :
-	set(value):
-		capitalize_action_names = value
-		_refresh_readable_action_names()
-## If true, show action names that are not explicitely listed in an input action name map.
-@export var show_all_actions : bool = true
-## Optional minimum size to add to all edit buttons.
-@export var button_minimum_size : Vector2
-@export_group(\"Icons\")
-## Optional link to an input icon mapper to replace the text with icons.
-@export var input_icon_mapper : InputIconMapper
-## If true, expand the icons to fill the buttons.
-@export var expand_icon : bool = false
-@export_group(\"Built-in Actions\")
-## Shows Godot's built-in actions (action names starting with \"ui_\") in the tree.
-@export var show_built_in_actions : bool = false
-## Prevents assigning inputs that are already assigned to Godot's built-in actions (action names starting with \"ui_\"). Not recommended.
-@export var catch_built_in_duplicate_inputs : bool = false
-## Maps the names of built-in input actions to readable names for users.
-@export var built_in_action_name_map := InputEventHelper.BUILT_IN_ACTION_NAME_MAP
-@export_group(\"Debug\")
-## Maps the names of input actions to readable names for users.
-@export var action_name_map : Dictionary
-
-var action_button_map : Dictionary = {}
-var button_readable_input_map : Dictionary = {}
-var assigned_input_events : Dictionary = {}
-var editing_action_name : String = \"\"
-var editing_action_group : int = 0
-var last_input_readable_name
-
-func _refresh_readable_action_names():
-		var _new_readable_action_names : Array[String]
-		for action_name in input_action_names:
-			if capitalize_action_names:
-				action_name = action_name.capitalize()
-			_new_readable_action_names.append(action_name)
-		readable_action_names = _new_readable_action_names
-
-func _clear_list() -> void:
-	for child in %ParentBoxContainer.get_children():
-		if child == %ActionBoxContainer:
-			continue
-		child.queue_free()
-
-func _replace_action(action_name : String, readable_input_name : String = \"\") -> void:
-	var readable_action_name = tr(_get_action_readable_name(action_name))
-	button_clicked.emit(readable_action_name, readable_input_name)
-
-func _on_button_pressed(action_name : String, action_group : int) -> void:
-	editing_action_name = action_name
-	editing_action_group = action_group
-	var button = _get_button_by_action(action_name, action_group)
-	var readable_input_name : String
-	if button and button in button_readable_input_map:
-		readable_input_name = button_readable_input_map[button]
-	_replace_action(action_name, readable_input_name)
-
-func _new_action_box() -> Node:
-	var new_action_box : Node = %ActionBoxContainer.duplicate()
-	new_action_box.visible = true
-	new_action_box.vertical = !(vertical)
-	return new_action_box
-
-func _add_header() -> void:
-	if action_group_names.is_empty(): return
-	var new_action_box := _new_action_box()
-	for group_iter in range(action_groups):
-		var group_name := \"\"
-		if group_iter < action_group_names.size():
-			group_name = action_group_names[group_iter]
-		var new_label := Label.new()
-		if button_minimum_size.x > 0:
-			new_label.custom_minimum_size.x = button_minimum_size.x
-			new_label.size_flags_horizontal = SIZE_SHRINK_CENTER
-		else:
-			new_label.size_flags_horizontal = SIZE_EXPAND_FILL
-		if button_minimum_size.y > 0:
-			new_label.custom_minimum_size.y = button_minimum_size.y
-			new_label.size_flags_vertical = SIZE_SHRINK_CENTER
-		else:
-			new_label.size_flags_vertical = SIZE_EXPAND_FILL
-		new_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		new_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		new_label.text = group_name
-		new_action_box.add_child(new_label)
-	%ParentBoxContainer.add_child(new_action_box)
-
-func _add_to_action_button_map(action_name : String, action_group : int, button_node : BaseButton) -> void:
-	var key_string : String = BUTTON_NAME_GROUP_STRING % [action_name, action_group]
-	action_button_map[key_string] = button_node
-
-func _get_button_by_action(action_name : String, action_group : int) -> Button:
-	var key_string : String = BUTTON_NAME_GROUP_STRING % [action_name, action_group]
-	if key_string in action_button_map:
-		return action_button_map[key_string]
-	return null
-
-func _update_next_button_disabled_state(action_name : String, action_group : int, disabled: bool = false) -> void:
-	var button = _get_button_by_action(action_name, action_group + 1)
-	if button:
-		button.disabled = disabled
-
-func _update_assigned_inputs_and_button(action_name : String, action_group : int, input_event : InputEvent) -> void:
-	var new_readable_input_name = InputEventHelper.get_text(input_event)
-	var button = _get_button_by_action(action_name, action_group)
-	if not button: return
-	var icon : Texture
-	if input_icon_mapper:
-		icon = input_icon_mapper.get_icon(input_event)
-	if icon:
-		button.icon = icon
-	else:
-		button.icon = null
-	if button.icon == null:
-		button.text = new_readable_input_name
-	else:
-		button.text = \"\"
-	var old_readable_input_name : String
-	if button in button_readable_input_map:
-		old_readable_input_name = button_readable_input_map[button]
-		assigned_input_events.erase(old_readable_input_name)
-	button_readable_input_map[button] = new_readable_input_name
-	assigned_input_events[new_readable_input_name] = action_name
-
-func _clear_button(action_name : String, action_group : int) -> void:
-	var button = _get_button_by_action(action_name, action_group)
-	if not button: return
-	button.icon = null
-	button.text = EMPTY_INPUT_ACTION_STRING
-	var old_readable_input_name : String
-	if button in button_readable_input_map:
-		old_readable_input_name = button_readable_input_map[button]
-		assigned_input_events.erase(old_readable_input_name)
-	button_readable_input_map[button] = EMPTY_INPUT_ACTION_STRING
-
-func _add_new_button(content : Variant, container: Control, disabled : bool = false) -> Button:
-	var new_button := Button.new()
-	if button_minimum_size.x > 0:
-		new_button.custom_minimum_size.x = button_minimum_size.x
-		new_button.size_flags_horizontal = SIZE_SHRINK_CENTER
-	else:
-		new_button.size_flags_horizontal = SIZE_EXPAND_FILL
-	if button_minimum_size.y > 0:
-		new_button.custom_minimum_size.y = button_minimum_size.y
-		new_button.size_flags_vertical = SIZE_SHRINK_CENTER
-	else:
-		new_button.size_flags_vertical = SIZE_EXPAND_FILL
-	new_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	new_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	new_button.expand_icon = expand_icon
-	if content is Texture:
-		new_button.icon = content
-	elif content is String:
-		new_button.text = content
-	new_button.disabled = disabled
-	container.add_child(new_button)
-	return new_button
-
-func _connect_button_and_add_to_maps(button : Button, input_name : String, action_name : String, group_iter : int) -> void:
-	button.pressed.connect(_on_button_pressed.bind(action_name, group_iter))
-	button_readable_input_map[button] = input_name
-	_add_to_action_button_map(action_name, group_iter, button)
-
-func _add_action_options(action_name : String, readable_action_name : String, input_events : Array[InputEvent]) -> void:
-	var new_action_box = %ActionBoxContainer.duplicate()
-	new_action_box.visible = true
-	new_action_box.vertical = !(vertical)
-	new_action_box.get_child(0).text = readable_action_name
-	for group_iter in range(action_groups):
-		var input_event : InputEvent
-		if group_iter < input_events.size():
-			input_event = input_events[group_iter]
-		var text = InputEventHelper.get_text(input_event)
-		var is_disabled = group_iter > input_events.size()
-		if text.is_empty(): text = EMPTY_INPUT_ACTION_STRING
-		var icon : Texture
-		if input_icon_mapper:
-			icon = input_icon_mapper.get_icon(input_event)
-		var content = icon if icon else text
-		var button : Button = _add_new_button(content, new_action_box, is_disabled)
-		_connect_button_and_add_to_maps(button, text, action_name, group_iter)
-	%ParentBoxContainer.add_child(new_action_box)
-
-func _get_all_action_names(include_built_in : bool = false) -> Array[StringName]:
-	var action_names : Array[StringName] = input_action_names.duplicate()
-	var full_action_name_map = action_name_map.duplicate()
-	if include_built_in:
-		for action_name in built_in_action_name_map:
-			if action_name is String:
-				action_name = StringName(action_name)
-			if action_name is StringName:
-				action_names.append(action_name)
-	if show_all_actions:
-		var all_actions := AppSettings.get_action_names(include_built_in)
-		for action_name in all_actions:
-			if not action_name in action_names:
-				action_names.append(action_name)
-	return action_names
-
-func _get_action_readable_name(action_name : StringName) -> String:
-	var readable_name : String
-	if action_name in action_name_map:
-		readable_name = action_name_map[action_name]
-	elif action_name in built_in_action_name_map:
-		readable_name = built_in_action_name_map[action_name]
-	else:
-		readable_name = action_name
-		if capitalize_action_names:
-			readable_name = readable_name.capitalize()
-		action_name_map[action_name] = readable_name
-	return readable_name
-
-func _build_ui_list() -> void:
-	_clear_list()
-	_add_header()
-	var action_names : Array[StringName] = _get_all_action_names(show_built_in_actions)
-	for action_name in action_names:
-		var input_events = InputMap.action_get_events(action_name)
-		if input_events.size() < 1:
-			continue
-		var readable_name : String = _get_action_readable_name(action_name)
-		_add_action_options(action_name, readable_name, input_events)
-
-func _assign_input_event(input_event : InputEvent, action_name : String) -> void:
-	assigned_input_events[InputEventHelper.get_text(input_event)] = action_name
-		
-func _assign_input_event_to_action_group(input_event : InputEvent, action_name : String, action_group : int) -> void:
-	_assign_input_event(input_event, action_name)
-	var action_events := InputMap.action_get_events(action_name)
-	action_events.resize(action_events.size() + 1)
-	action_events[action_group] = input_event
-	InputMap.action_erase_events(action_name)
-	var final_action_events : Array[InputEvent]
-	for input_action_event in action_events:
-		if input_action_event == null: continue
-		final_action_events.append(input_action_event)
-		InputMap.action_add_event(action_name, input_action_event)
-	AppSettings.set_config_input_events(action_name, final_action_events)
-	action_group = min(action_group, final_action_events.size() - 1)
-	_update_assigned_inputs_and_button(action_name, action_group, input_event)
-	_update_next_button_disabled_state(action_name, action_group)
-
-func _build_assigned_input_events() -> void:
-	assigned_input_events.clear()
-	var action_names := _get_all_action_names(show_built_in_actions and catch_built_in_duplicate_inputs)
-	for action_name in action_names:
-		var input_events = InputMap.action_get_events(action_name)
-		for input_event in input_events:
-			_assign_input_event(input_event, action_name)
-
-func _get_action_for_input_event(input_event : InputEvent) -> String:
-	if InputEventHelper.get_text(input_event) in assigned_input_events:
-		return assigned_input_events[InputEventHelper.get_text(input_event)] 
-	return \"\"
-
-func add_action_event(last_input_text : String, last_input_event : InputEvent) -> void:
-	last_input_readable_name = last_input_text
-	if last_input_event != null:
-		var assigned_action := _get_action_for_input_event(last_input_event)
-		if not assigned_action.is_empty():
-			var readable_action_name = tr(_get_action_readable_name(assigned_action))
-			already_assigned.emit(readable_action_name, last_input_readable_name)
-		else:
-			_assign_input_event_to_action_group(last_input_event, editing_action_name, editing_action_group)
-	editing_action_name = \"\"
-
-func _refresh_ui_list_button_content() -> void:
-	var action_names : Array[StringName] = _get_all_action_names(show_built_in_actions)
-	for action_name in action_names:
-		var input_events := InputMap.action_get_events(action_name)
-		if input_events.size() < 1:
-			continue
-		var group_iter : int = 0
-		for input_event in input_events:
-			_update_assigned_inputs_and_button(action_name, group_iter, input_event)
-			_update_next_button_disabled_state(action_name, group_iter)
-			group_iter += 1
-		while group_iter < action_groups:
-			_clear_button(action_name, group_iter)
-			_update_next_button_disabled_state(action_name, group_iter, true)
-			group_iter += 1
-
-func _set_action_box_container_size() -> void:
-	if button_minimum_size.x > 0:
-		%ActionBoxContainer.size_flags_horizontal = SIZE_SHRINK_CENTER
-	else:
-		%ActionBoxContainer.size_flags_horizontal = SIZE_EXPAND_FILL
-	if button_minimum_size.y > 0:
-		%ActionBoxContainer.size_flags_vertical = SIZE_SHRINK_CENTER
-	else:
-		%ActionBoxContainer.size_flags_vertical = SIZE_EXPAND_FILL
-
-func reset() -> void:
-	AppSettings.reset_to_default_inputs()
-	_build_assigned_input_events()
-	_refresh_ui_list_button_content()
-
-func _ready() -> void:
-	if Engine.is_editor_hint(): return
-	vertical = vertical
-	_set_action_box_container_size()
-	_build_assigned_input_events()
-	_build_ui_list.call_deferred()
-	if input_icon_mapper:
-		input_icon_mapper.joypad_device_changed.connect(_refresh_ui_list_button_content)
-"
-
-[sub_resource type="PackedScene" id="PackedScene_3re04"]
-_bundled = {
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("InputActionsList", "ScrollContainer", "custom_minimum_size", "anchors_preset", "anchor_right", "anchor_bottom", "grow_horizontal", "grow_vertical", "size_flags_horizontal", "size_flags_vertical", "follow_focus", "script", "action_groups", "action_group_names", "input_action_names", "readable_action_names", "action_name_map", "ParentBoxContainer", "BoxContainer", "unique_name_in_owner", "layout_mode", "size_flags_horizontal", "size_flags_vertical", "vertical", "ActionBoxContainer", "BoxContainer", "unique_name_in_owner", "visible", "layout_mode", "ActionNameLabel", "Label", "custom_minimum_size", "layout_mode"),
-"node_count": 4,
-"node_paths": [NodePath("."), NodePath("./ParentBoxContainer"), NodePath("./ParentBoxContainer/ActionBoxContainer")],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 15, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 8, 6, 9, 7, 10, 8, 11, 9, 12, 10, 13, 11, 14, 12, 15, 13, 16, 14, 0, 1073741824, 0, 18, 17, -1, 5, 19, 15, 20, 16, 21, 17, 22, 18, 23, 19, 0, 1073741825, 0, 25, 24, -1, 3, 26, 20, 27, 21, 28, 22, 0, 1073741826, 0, 30, 29, -1, 2, 31, 23, 32, 24, 0),
-"variants": [Vector2(560, 240), 15, 1.0, 1.0, 2, 2, 3, 3, true, SubResource("GDScript_7aihr"), 3, Array[String](["Primary", "Secondary", "Tertiary", "Quaternary", "Quinary"]), Array[StringName]([&"move_forward", &"move_backward", &"move_up", &"move_down", &"move_left", &"move_right", &"interact"]), Array[String](["Move Forward", "Move Backward", "Move Up", "Move Down", "Move Left", "Move Right", "Interact"]), {
-&"interact": "Interact",
-&"move_backward": "Move Backward",
-&"move_down": "Move Down",
-&"move_forward": "Move Forward",
-&"move_left": "Move Left",
-&"move_right": "Move Right",
-&"move_up": "Move Up"
-}, true, 2, 3, 3, true, true, false, 2, Vector2(150, 0), 2],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_ascoc"]
-script/source = "@tool
-class_name InputActionsTree
-extends Tree
-## Scene to list the input actions out in a tree format.
-
-signal already_assigned(action_name : String, input_name : String)
-signal minimum_reached(action_name : String)
-signal add_button_clicked(action_name : String)
-signal remove_button_clicked(action_name : String, input_name : String)
-
-## The names of the action names that should be listed for editing.
-@export var input_action_names : Array[StringName] :
-	set(value):
-		var _value_changed = input_action_names != value
-		input_action_names = value
-		if _value_changed:
-			_refresh_readable_action_names()
-## The readable names of the action names that should be listed for editing.
-@export var readable_action_names : Array[String] :
-	set(value):
-		var _value_changed = readable_action_names != value
-		readable_action_names = value
-		if _value_changed:
-			var _new_action_name_map : Dictionary
-			for iter in range(input_action_names.size()):
-				var _input_name : StringName = input_action_names[iter]
-				var _readable_name : String = readable_action_names[iter]
-				_new_action_name_map[_input_name] = _readable_name
-			action_name_map = _new_action_name_map
-## If true, capitalizes action names in order to make them readable.
-@export var capitalize_action_names : bool = true :
-	set(value):
-		capitalize_action_names = value
-		_refresh_readable_action_names()
-## Show action names that are not explicitely listed in an action name map.
-@export var show_all_actions : bool = true
-@export_group(\"Icons\")
-## Icon for the button that adds a new input to an action name.
-@export var add_button_texture : Texture2D
-## Icon for the button that removes an input to an action name.
-@export var remove_button_texture : Texture2D
-## Optional link to an input icon mapper to replace the text with icons.
-@export var input_icon_mapper : InputIconMapper
-@export_group(\"Built-in Actions\")
-## Shows Godot's built-in actions (action names starting with \"ui_\") in the tree.
-@export var show_built_in_actions : bool = false
-## Prevents assigning inputs that are already assigned to Godot's built-in actions (action names starting with \"ui_\"). Not recommended.
-@export var catch_built_in_duplicate_inputs : bool = false
-## Maps the names of built-in input actions to readable names for users.
-@export var built_in_action_name_map := InputEventHelper.BUILT_IN_ACTION_NAME_MAP
-@export_group(\"Debug\")
-## Maps the names of input actions to readable names for users.
-@export var action_name_map : Dictionary
-
-var tree_item_add_map : Dictionary = {}
-var tree_item_remove_map : Dictionary = {}
-var tree_item_action_map : Dictionary = {}
-var assigned_input_events : Dictionary = {}
-var editing_action_name : String = \"\"
-var editing_item
-var last_input_readable_name
-
-func _refresh_readable_action_names():
-		var _new_readable_action_names : Array[String]
-		for action_name in input_action_names:
-			if capitalize_action_names:
-				action_name = action_name.capitalize()
-			_new_readable_action_names.append(action_name)
-		readable_action_names = _new_readable_action_names
-
-func _start_tree() -> void:
-	clear()
-	create_item()
-
-func _add_input_event_as_tree_item(action_name : String, input_event : InputEvent, parent_item : TreeItem) -> void:
-	var input_tree_item : TreeItem = create_item(parent_item)
-	var icon : Texture
-	if input_icon_mapper:
-		icon = input_icon_mapper.get_icon(input_event)
-	if icon:
-		input_tree_item.set_icon(0, icon)
-	input_tree_item.set_text(0, InputEventHelper.get_text(input_event))
-	if remove_button_texture != null:
-		input_tree_item.add_button(0, remove_button_texture, -1, false, \"Remove\")
-	tree_item_remove_map[input_tree_item] = input_event
-	tree_item_action_map[input_tree_item] = action_name
-
-func _add_action_as_tree_item(readable_name : String, action_name : String, input_events : Array[InputEvent]) -> void:
-	var root_tree_item : TreeItem = get_root()
-	var action_tree_item : TreeItem = create_item(root_tree_item)
-	action_tree_item.set_text(0, readable_name)
-	tree_item_add_map[action_tree_item] = action_name
-	if add_button_texture != null:
-		action_tree_item.add_button(0, add_button_texture, -1, false, \"Add\")
-	for input_event in input_events:
-		_add_input_event_as_tree_item(action_name, input_event, action_tree_item)
-
-func _get_all_action_names(include_built_in : bool = false) -> Array[StringName]:
-	var action_names : Array[StringName] = input_action_names.duplicate()
-	var full_action_name_map = action_name_map.duplicate()
-	if include_built_in:
-		for action_name in built_in_action_name_map:
-			if action_name is String:
-				action_name = StringName(action_name)
-			if action_name is StringName:
-				action_names.append(action_name)
-	if show_all_actions:
-		var all_actions := AppSettings.get_action_names(include_built_in)
-		for action_name in all_actions:
-			if not action_name in action_names:
-				action_names.append(action_name)
-	return action_names
-
-func _get_action_readable_name(action_name : StringName) -> String:
-	var readable_name : String
-	if action_name in action_name_map:
-		readable_name = action_name_map[action_name]
-	elif action_name in built_in_action_name_map:
-		readable_name = built_in_action_name_map[action_name]
-	else:
-		readable_name = action_name
-		if capitalize_action_names:
-			readable_name = readable_name.capitalize()
-		action_name_map[action_name] = readable_name
-	return readable_name
-
-func _build_ui_tree() -> void:
-	_start_tree()
-	var action_names : Array[StringName] = _get_all_action_names(show_built_in_actions)
-	for action_name in action_names:
-		var input_events = InputMap.action_get_events(action_name)
-		if input_events.size() < 1:
-			continue
-		var readable_name : String = _get_action_readable_name(action_name)
-		_add_action_as_tree_item(readable_name, action_name, input_events)
-
-func _assign_input_event(input_event : InputEvent, action_name : String) -> void:
-	assigned_input_events[InputEventHelper.get_text(input_event)] = action_name
-		
-func _assign_input_event_to_action(input_event : InputEvent, action_name : String) -> void:
-	_assign_input_event(input_event, action_name)
-	InputMap.action_add_event(action_name, input_event)
-	var action_events = InputMap.action_get_events(action_name)
-	AppSettings.set_config_input_events(action_name, action_events)
-	_add_input_event_as_tree_item(action_name, input_event, editing_item)
-
-func _can_remove_input_event(action_name : String) -> bool:
-	return InputMap.action_get_events(action_name).size() > 1
-
-func _remove_input_event(input_event : InputEvent) -> void:
-	assigned_input_events.erase(InputEventHelper.get_text(input_event))
-
-func _remove_input_event_from_action(input_event : InputEvent, action_name : String) -> void:
-	_remove_input_event(input_event)
-	AppSettings.remove_action_input_event(action_name, input_event)
-
-func _build_assigned_input_events() -> void:
-	assigned_input_events.clear()
-	var action_names := _get_all_action_names(show_built_in_actions and catch_built_in_duplicate_inputs)
-	for action_name in action_names:
-		var input_events = InputMap.action_get_events(action_name)
-		for input_event in input_events:
-			_assign_input_event(input_event, action_name)
-
-func _get_action_for_input_event(input_event : InputEvent) -> String:
-	if InputEventHelper.get_text(input_event) in assigned_input_events:
-		return assigned_input_events[InputEventHelper.get_text(input_event)] 
-	return \"\"
-
-func add_action_event(last_input_text : String, last_input_event : InputEvent):
-	last_input_readable_name = last_input_text
-	if last_input_event != null:
-		var assigned_action := _get_action_for_input_event(last_input_event)
-		if not assigned_action.is_empty():
-			var readable_action_name = tr(_get_action_readable_name(assigned_action))
-			already_assigned.emit(readable_action_name, last_input_readable_name)
-		else:
-			_assign_input_event_to_action(last_input_event, editing_action_name)
-	editing_action_name = \"\"
-
-func remove_action_event(item : TreeItem) -> void:
-	if item not in tree_item_remove_map:
-		return
-	var action_name = tree_item_action_map[item]
-	var input_event = tree_item_remove_map[item]
-	if not _can_remove_input_event(action_name):
-		var readable_action_name = _get_action_readable_name(action_name)
-		minimum_reached.emit(readable_action_name)
-		return
-	_remove_input_event_from_action(input_event, action_name)
-	var parent_tree_item = item.get_parent()
-	parent_tree_item.remove_child(item)
-
-func reset() -> void:
-	AppSettings.reset_to_default_inputs()
-	_build_assigned_input_events()
-	_build_ui_tree()
-
-func _add_item(item : TreeItem) -> void:
-	editing_item = item
-	editing_action_name = tree_item_add_map[item]
-	var readable_action_name = tr(_get_action_readable_name(editing_action_name))
-	add_button_clicked.emit(readable_action_name)
-
-func _remove_item(item : TreeItem) -> void:
-	editing_item = item
-	editing_action_name = tree_item_action_map[item]
-	var readable_action_name = tr(_get_action_readable_name(editing_action_name))
-	var item_text = item.get_text(0)
-	remove_button_clicked.emit(readable_action_name, item_text)
-
-func _check_item_actions(item : TreeItem) -> void:
-	if item in tree_item_add_map:
-		_add_item(item)
-	elif item in tree_item_remove_map:
-		_remove_item(item)
-
-func _on_button_clicked(item : TreeItem, _column, _id, _mouse_button_index) -> void:
-	_check_item_actions(item)
-
-func _on_item_activated() -> void:
-	var item = get_selected()
-	_check_item_actions(item)
-
-func _ready() -> void:
-	if Engine.is_editor_hint(): return
-	_build_assigned_input_events()
-	_build_ui_tree.call_deferred()
-	button_clicked.connect(_on_button_clicked)
-	item_activated.connect(_on_item_activated)
-	if input_icon_mapper:
-		input_icon_mapper.joypad_device_changed.connect(_build_ui_tree)
-"
-
-[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_wr4n6"]
-load_path = "res://.godot/imported/addition_symbol.png-e8a7f3ce4d91474fb1dc85f298d0b607.ctex"
-
-[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_ukb12"]
-load_path = "res://.godot/imported/subtraction_symbol.png-88291598586ab54d7f002593f7569b3e.ctex"
-
-[sub_resource type="PackedScene" id="PackedScene_i7m4m"]
-_bundled = {
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("InputActionsTree", "Tree", "custom_minimum_size", "anchors_preset", "anchor_right", "anchor_bottom", "grow_horizontal", "grow_vertical", "size_flags_horizontal", "size_flags_vertical", "hide_root", "script", "input_action_names", "readable_action_names", "add_button_texture", "remove_button_texture", "action_name_map"),
-"node_count": 1,
-"node_paths": [],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 15, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 8, 6, 9, 7, 10, 8, 11, 9, 12, 10, 13, 11, 14, 12, 15, 13, 16, 14, 0),
-"variants": [Vector2(400, 240), 15, 1.0, 1.0, 2, 2, 3, 3, true, SubResource("GDScript_ascoc"), Array[StringName]([&"move_forward", &"move_backward", &"move_up", &"move_down", &"move_left", &"move_right", &"interact"]), Array[String](["Move Forward", "Move Backward", "Move Up", "Move Down", "Move Left", "Move Right", "Interact"]), SubResource("CompressedTexture2D_wr4n6"), SubResource("CompressedTexture2D_ukb12"), {
-&"interact": "Interact",
-&"move_backward": "Move Backward",
-&"move_down": "Move Down",
-&"move_forward": "Move Forward",
-&"move_left": "Move Left",
-&"move_right": "Move Right",
-&"move_up": "Move Up"
-}],
-"version": 3
-}
 
 [sub_resource type="GDScript" id="GDScript_rkfhe"]
 script/source = "@tool
@@ -1231,1134 +570,6 @@ _bundled = {
 "variants": [SubResource("PackedScene_ul61k"), SubResource("GDScript_rkfhe"), "Confirm", true, "Cancel", false, "Cancel", true, 2, "Confirm"],
 "version": 3
 }
-
-[sub_resource type="GDScript" id="GDScript_0v86b"]
-script/source = "@tool
-extends ConfirmationOverlaidWindow
-## Scene to confirm a new input for an action name.
-
-const LISTENING_TEXT : String = \"Listening for input...\"
-const FOCUS_HERE_TEXT : String = \"Focus here to assign inputs.\"
-const CONFIRM_INPUT_TEXT : String = \"Press again to confirm...\"
-const NO_INPUT_TEXT : String = \"None\"
-
-enum InputConfirmation {
-	SINGLE,
-	DOUBLE,
-	OK_BUTTON
-}
-## Confirmations required before a new input is accepted for an aciton.
-@export var input_confirmation : InputConfirmation = InputConfirmation.SINGLE
-
-var last_input_event : InputEvent
-var last_input_text : String
-var listening : bool = false
-var confirming : bool = false
-
-func _record_input_event(event : InputEvent) -> void:
-	last_input_text = InputEventHelper.get_text(event)
-	if last_input_text.is_empty():
-		return
-	last_input_event = event
-	%InputLabel.text = last_input_text
-	confirm_button.disabled = false
-
-func _is_recordable_input(event : InputEvent) -> bool:
-	return event != null and \\
-		(event is InputEventKey or \\
-		event is InputEventMouseButton or \\
-		event is InputEventJoypadButton or \\
-		(event is InputEventJoypadMotion and \\
-		abs(event.axis_value) > 0.5)) and \\
-		event.is_pressed()
-
-func _start_listening() -> void:
-	%InputTextEdit.placeholder_text = LISTENING_TEXT
-	listening = true
-	%DelayTimer.start()
-
-func _stop_listening() -> void:
-	%InputTextEdit.placeholder_text = FOCUS_HERE_TEXT
-	listening = false
-	confirming = false
-
-func _on_input_text_edit_focus_entered() -> void:
-	_start_listening.call_deferred()
-
-func _on_input_text_edit_focus_exited() -> void:
-	_stop_listening()
-
-func _focus_on_ok() -> void:
-	confirm_button.grab_focus()
-
-func _ready() -> void:
-	confirm_button.focus_neighbor_top = ^\"../../../BodyMargin/VBoxContainer/InputTextEdit\"
-	close_button.focus_neighbor_top = ^\"../../../BodyMargin/VBoxContainer/InputTextEdit\"
-	super._ready()
-
-func _input_matches_last(event : InputEvent) -> bool:
-	return last_input_text == InputEventHelper.get_text(event)
-
-func _is_mouse_input(event : InputEvent) -> bool:
-	return event is InputEventMouse
-
-func _input_confirms_choice(event : InputEvent) -> bool:
-	return confirming and not _is_mouse_input(event) and _input_matches_last(event)
-
-func _should_process_input_event(event : InputEvent) -> bool:
-	return listening and _is_recordable_input(event) and %DelayTimer.is_stopped()
-
-func _should_confirm_input_event(event : InputEvent) -> bool:
-	return not _is_mouse_input(event)
-
-func _confirm_choice() -> void:
-	confirmed.emit()
-	close()
-
-func _process_input_event(event : InputEvent) -> void:
-	if not _should_process_input_event(event):
-		return
-	if _input_confirms_choice(event):
-		confirming = false
-		if input_confirmation == InputConfirmation.DOUBLE:
-			_confirm_choice()
-		else:
-			_focus_on_ok.call_deferred()
-		return
-	_record_input_event(event)
-	if input_confirmation == InputConfirmation.SINGLE:
-		_confirm_choice()
-	if _should_confirm_input_event(event):
-		confirming = true
-		%DelayTimer.start()
-		%InputTextEdit.placeholder_text = CONFIRM_INPUT_TEXT
-
-func _on_input_text_edit_gui_input(event) -> void:
-	%InputTextEdit.set_deferred(\"text\", \"\")
-	_process_input_event(event)
-
-func _on_visibility_changed() -> void:
-	super._on_visibility_changed()
-	if visible:
-		if not text.strip_edges().is_empty():
-			%InputLabel.text = text
-		else:
-			%InputLabel.text = NO_INPUT_TEXT
-		%InputTextEdit.grab_focus()
-"
-
-[sub_resource type="PackedScene" id="PackedScene_ulq3g"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 3,
-"conns": PackedInt32Array(1073741834, 1073741833, 52, 51, 2, 0, 0, 1073741836, 1073741835, 54, 53, 2, 0, 0, 1073741838, 1073741837, 56, 55, 2, 0, 0),
-"editable_instances": [],
-"names": PackedStringArray("KeyAssignmentWindow", "custom_minimum_size", "offset_left", "offset_top", "offset_right", "offset_bottom", "script", "input_confirmation", "close_button_text", "title", "TitleLabel", "text", "DescriptionLabel", "visible", "VBoxContainer", "VBoxContainer", "layout_mode", "size_flags_vertical", "InputLabel", "Label", "unique_name_in_owner", "layout_mode", "text", "horizontal_alignment", "InputTextEdit", "TextEdit", "unique_name_in_owner", "layout_mode", "size_flags_vertical", "placeholder_text", "context_menu_enabled", "shortcut_keys_enabled", "selecting_enabled", "deselect_on_focus_loss_enabled", "drag_and_drop_selection_enabled", "middle_mouse_paste_enabled", "caret_move_on_right_click", "MenuButtons", "null_focus_enabled", "joypad_enabled", "mouse_hidden_enabled", "CloseButton", "focus_neighbor_top", "text", "ConfirmButton", "focus_neighbor_top", "DelayTimer", "Timer", "unique_name_in_owner", "wait_time", "one_shot", "_on_input_text_edit_focus_entered", "focus_entered", "_on_input_text_edit_focus_exited", "focus_exited", "_on_input_text_edit_gui_input", "gui_input"),
-"node_count": 10,
-"node_paths": [NodePath("./ContentContainer/BoxContainer/TitleMargin/BoxContainer"), NodePath("./ContentContainer/BoxContainer/BodyMargin"), NodePath("./ContentContainer/BoxContainer/BodyMargin"), NodePath("./ContentContainer/BoxContainer/BodyMargin/VBoxContainer"), NodePath("./ContentContainer/BoxContainer/BodyMargin/VBoxContainer"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("."), NodePath("."), NodePath("ContentContainer/BoxContainer/BodyMargin/VBoxContainer/InputTextEdit"), NodePath("."), NodePath("ContentContainer/BoxContainer/BodyMargin/VBoxContainer/InputTextEdit"), NodePath("."), NodePath("ContentContainer/BoxContainer/BodyMargin/VBoxContainer/InputTextEdit")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 9, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 0, 1073741824, -1, 2147483647, 262154, -1, 1, 11, 10, 0, 1073741825, -1, 2147483647, 262156, -1, 1, 13, 11, 0, 1073741826, 0, 15, 524302, -1, 2, 16, 12, 17, 13, 0, 1073741827, 0, 19, 262162, -1, 4, 20, 14, 21, 15, 22, 16, 23, 17, 0, 1073741828, 0, 25, 524312, -1, 11, 26, 18, 27, 19, 28, 20, 29, 21, 30, 22, 31, 23, 32, 24, 33, 25, 34, 26, 35, 27, 36, 28, 0, 1073741829, -1, 2147483647, 262181, -1, 3, 38, 29, 39, 30, 40, 31, 0, 1073741830, -1, 2147483647, 262185, -1, 2, 42, 32, 43, 33, 0, 1073741831, -1, 2147483647, 524332, -1, 1, 45, 34, 0, 1073741832, 0, 47, 524334, -1, 3, 48, 35, 49, 36, 50, 37, 0),
-"variants": [SubResource("PackedScene_g2ndc"), Vector2(420, 200), -210.0, -100.0, 210.0, 100.0, SubResource("GDScript_0v86b"), 0, "Close", "Set Input", "Set Input", false, 2, 3, true, 2, "None", 1, true, 2, 3, "Focus here to assign inputs.", false, false, false, false, false, false, false, false, false, false, NodePath("../../../BodyMargin/VBoxContainer/InputTextEdit"), "Close", NodePath("../../../BodyMargin/VBoxContainer/InputTextEdit"), true, 0.1, true],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_gpor5"]
-_bundled = {
-"conn_count": 11,
-"conns": PackedInt32Array(1073741837, 1073741836, 76, 75, 2, 0, 0, 1073741839, 1073741838, 78, 77, 2, 0, 0, 1073741841, 1073741840, 80, 79, 2, 0, 0, 1073741843, 1073741842, 82, 81, 2, 0, 0, 1073741845, 1073741844, 84, 83, 2, 0, 0, 1073741847, 1073741846, 86, 85, 2, 0, 0, 1073741849, 1073741848, 88, 87, 2, 0, 0, 1073741851, 1073741850, 90, 89, 2, 0, 0, 1073741853, 1073741852, 92, 91, 2, 0, 0, 1073741855, 1073741854, 94, 93, 2, 0, 0, 1073741857, 1073741856, 96, 95, 2, 0, 0),
-"editable_instances": [],
-"names": PackedStringArray("Controls", "MarginContainer", "anchors_preset", "anchor_right", "anchor_bottom", "grow_horizontal", "grow_vertical", "size_flags_horizontal", "size_flags_vertical", "theme_override_constants/margin_left", "theme_override_constants/margin_top", "theme_override_constants/margin_right", "theme_override_constants/margin_bottom", "script", "VBoxContainer", "VBoxContainer", "layout_mode", "size_flags_horizontal", "size_flags_vertical", "script", "search_depth", "InputMappingContainer", "VBoxContainer", "layout_mode", "size_flags_vertical", "alignment", "Label", "Label", "layout_mode", "text", "horizontal_alignment", "InputActionsList", "unique_name_in_owner", "custom_minimum_size", "layout_mode", "InputActionsTree", "unique_name_in_owner", "visible", "custom_minimum_size", "layout_mode", "HBoxContainer", "HBoxContainer", "layout_mode", "alignment", "ResetButton", "Button", "layout_mode", "text", "KeyDeletionConfirmation", "visible", "custom_minimum_size", "layout_mode", "text", "title", "ResetConfirmation", "visible", "custom_minimum_size", "layout_mode", "text", "title", "OneInputMinimumMessage", "visible", "custom_minimum_size", "layout_mode", "update_content", "title", "AlreadyAssignedMessage", "visible", "custom_minimum_size", "layout_mode", "update_content", "title", "KeyAssignmentWindow", "visible", "layout_mode", "_on_input_actions_list_already_assigned", "already_assigned", "_on_input_actions_list_button_clicked", "button_clicked", "_on_input_actions_list_minimum_reached", "minimum_reached", "_on_input_actions_tree_add_button_clicked", "add_button_clicked", "_on_input_actions_tree_already_assigned", "already_assigned", "_on_input_actions_tree_minimum_reached", "minimum_reached", "_on_input_actions_tree_remove_button_clicked", "remove_button_clicked", "_on_reset_button_pressed", "pressed", "_on_key_deletion_confirmation_confirmed", "confirmed", "_on_reset_confirmation_confirmed", "confirmed", "_on_key_assignment_window_confirmed", "confirmed"),
-"node_count": 13,
-"node_paths": [NodePath("."), NodePath("./VBoxContainer"), NodePath("./VBoxContainer/InputMappingContainer"), NodePath("./VBoxContainer/InputMappingContainer"), NodePath("./VBoxContainer/InputMappingContainer"), NodePath("./VBoxContainer/InputMappingContainer"), NodePath("./VBoxContainer/InputMappingContainer/HBoxContainer"), NodePath("."), NodePath("."), NodePath("."), NodePath("."), NodePath("."), NodePath("."), NodePath("VBoxContainer/InputMappingContainer/InputActionsList"), NodePath("."), NodePath("VBoxContainer/InputMappingContainer/InputActionsList"), NodePath("."), NodePath("VBoxContainer/InputMappingContainer/InputActionsList"), NodePath("."), NodePath("VBoxContainer/InputMappingContainer/InputActionsTree"), NodePath("."), NodePath("VBoxContainer/InputMappingContainer/InputActionsTree"), NodePath("."), NodePath("VBoxContainer/InputMappingContainer/InputActionsTree"), NodePath("."), NodePath("VBoxContainer/InputMappingContainer/InputActionsTree"), NodePath("."), NodePath("VBoxContainer/InputMappingContainer/HBoxContainer/ResetButton"), NodePath("."), NodePath("KeyDeletionConfirmation"), NodePath("."), NodePath("ResetConfirmation"), NodePath("."), NodePath("KeyAssignmentWindow")],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 12, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 8, 6, 9, 7, 10, 8, 11, 9, 12, 10, 13, 11, 0, 1073741824, 0, 15, 14, -1, 5, 16, 12, 17, 13, 18, 14, 19, 15, 20, 16, 0, 1073741825, 0, 22, 21, -1, 3, 23, 17, 24, 18, 25, 19, 0, 1073741826, 0, 27, 26, -1, 3, 28, 20, 29, 21, 30, 22, 0, 1073741827, 0, 2147483647, 31, 23, 3, 32, 24, 33, 25, 34, 26, 0, 1073741828, 0, 2147483647, 35, 27, 4, 36, 28, 37, 29, 38, 30, 39, 31, 0, 1073741829, 0, 41, 40, -1, 2, 42, 32, 43, 33, 0, 1073741830, 0, 45, 44, -1, 2, 46, 34, 47, 35, 0, 1073741831, 0, 2147483647, 48, 36, 5, 49, 37, 50, 38, 51, 39, 52, 40, 53, 41, 0, 1073741832, 0, 2147483647, 54, 42, 5, 55, 43, 56, 44, 57, 45, 58, 46, 59, 47, 0, 1073741833, 0, 2147483647, 60, 48, 5, 61, 49, 62, 50, 63, 51, 64, 52, 65, 53, 0, 1073741834, 0, 2147483647, 66, 54, 5, 67, 55, 68, 56, 69, 57, 70, 58, 71, 59, 0, 1073741835, 0, 2147483647, 72, 60, 2, 73, 61, 74, 62, 0),
-"variants": [15, 1.0, 1.0, 2, 2, 3, 3, 32, 8, 32, 8, SubResource("GDScript_bmy5n"), 2, 4, 4, SubResource("GDScript_dnslt"), 5, 2, 3, 1, 2, "Actions & Inputs", 1, SubResource("PackedScene_3re04"), true, Vector2(560, 440), 2, SubResource("PackedScene_i7m4m"), true, false, Vector2(400, 440), 2, 2, 1, 2, "Reset", SubResource("PackedScene_g2ndc"), false, Vector2(420, 200), 2, "Are you sure you want to remove KEY from ACTION?", "Remove Key", SubResource("PackedScene_g2ndc"), false, Vector2(420, 200), 2, "Are you sure you want to reset controls back to the defaults?", "Reset to Default", SubResource("PackedScene_ul61k"), false, Vector2(420, 200), 2, true, "One Input Minimum", SubResource("PackedScene_ul61k"), false, Vector2(420, 200), 2, true, "Already Assigned", SubResource("PackedScene_ulq3g"), false, 2],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_dqr2x"]
-script/source = "@tool
-class_name InputIconMapper
-extends FileLister
-
-signal joypad_device_changed
-
-const COMMON_REPLACE_STRINGS: Dictionary = {
-	\"L 1\": \"Left Shoulder\",
-	\"R 1\": \"Right Shoulder\",
-	\"L 2\": \"Left Trigger\",
-	\"R 2\": \"Right Trigger\",
-	\"Lt\": \"Left Trigger\",
-	\"Rt\": \"Right Trigger\",
-	\"Lb\": \"Left Shoulder\",
-	\"Rb\": \"Right Shoulder\",
-} # Dictionary[String, String]
-## Gives priority to icons with occurrences of the provided strings.
-@export var prioritized_strings : Array[String]
-## Replaces the first occurence in icon names of the key with the value.
-@export var replace_strings : Dictionary # Dictionary[String, String]
-## Filters the icon names of the provided strings.
-@export var filtered_strings : Array[String]
-## Adds entries for \"Up\", \"Down\", \"Left\", \"Right\" to icon names ending with \"Stick\".
-@export var add_stick_directions : bool = false
-@export var intial_joypad_device : String = InputEventHelper.DEVICE_GENERIC
-## Attempt to match the icon names to the input names based on the string rules.
-@export var _match_icons_to_inputs_action : bool = false :
-	set(value):
-		if value and Engine.is_editor_hint():
-			_match_icons_to_inputs()
-# For Godot 4.4
-# @export_tool_button(\"Match Icons to Inputs\") var _match_icons_to_inputs_action = _match_icons_to_inputs
-@export var matching_icons : Dictionary # Dictionary[String, Texture]
-@export_group(\"Debug\")
-@export var all_icons : Dictionary # Dictionary[String, Texture]
-
-@onready var last_joypad_device = intial_joypad_device
-
-func _is_end_of_word(full_string : String, what : String) -> bool:
-	var string_end_position = full_string.find(what) + what.length()
-	var end_of_word : bool
-	if string_end_position + 1 < full_string.length():
-		var next_character = full_string.substr(string_end_position, 1)
-		end_of_word = next_character == \" \"
-	return full_string.ends_with(what) or end_of_word
-
-func _get_standard_joy_name(joy_name : String) -> String:
-	var all_replace_strings := replace_strings.duplicate()
-	all_replace_strings.merge(COMMON_REPLACE_STRINGS)
-	for what in all_replace_strings:
-		if joy_name.contains(what) and _is_end_of_word(joy_name, what):
-			var position = joy_name.find(what)
-			joy_name = joy_name.erase(position, what.length())
-			joy_name = joy_name.insert(position, all_replace_strings[what])
-	var combined_joystick_name : Array[String] = []
-	for part in joy_name.split(\" \"):
-		if part.to_lower() in filtered_strings:
-			continue
-		if not part.is_empty():
-			combined_joystick_name.append(part)
-	joy_name = \" \".join(combined_joystick_name)
-	joy_name = joy_name.strip_edges()
-	return joy_name
-
-func _match_icon_to_file(file : String) -> void:
-	var matching_string : String = file.get_file().get_basename()
-	var icon : Texture = load(file)
-	if not icon:
-		return
-	all_icons[matching_string] = icon
-	matching_string = matching_string.capitalize()
-	matching_string = _get_standard_joy_name(matching_string)
-	matching_string = matching_string.strip_edges()
-	if add_stick_directions and matching_string.ends_with(\"Stick\"):
-		matching_icons[matching_string + \" Up\"] = icon
-		matching_icons[matching_string + \" Down\"] = icon
-		matching_icons[matching_string + \" Left\"] = icon
-		matching_icons[matching_string + \" Right\"] = icon
-		return
-	if matching_string in matching_icons:
-		return
-	matching_icons[matching_string] = icon
-
-func _prioritized_files() -> Array[String]:
-	var priority_levels : Dictionary # Dictionary[String, int]
-	var priortized_files : Array[String]
-	for prioritized_string in prioritized_strings:
-		for file in files:
-			if file.containsn(prioritized_string):
-				if file in priority_levels:
-					priority_levels[file] += 1
-				else:
-					priority_levels[file] = 1
-	var priority_file_map : Dictionary # Dictionary[int, Array]
-	var max_priority_level : int = 0
-	for file in priority_levels:
-		var priority_level = priority_levels[file]
-		max_priority_level = max(priority_level, max_priority_level)
-		if priority_level in priority_file_map:
-			priority_file_map[priority_level].append(file)
-		else:
-			priority_file_map[priority_level] = [file]
-	while max_priority_level > 0:
-		for priority_file in priority_file_map[max_priority_level]:
-			priortized_files.append(priority_file)
-		max_priority_level -= 1
-	return priortized_files
-
-func _match_icons_to_inputs() -> void:
-	matching_icons.clear()
-	all_icons.clear()
-	for prioritized_file in _prioritized_files():
-		_match_icon_to_file(prioritized_file)
-	for file in files:
-		_match_icon_to_file(file)
-
-func get_icon(input_event : InputEvent) -> Texture:
-	var specific_text = InputEventHelper.get_device_specific_text(input_event, last_joypad_device)
-	if specific_text in matching_icons:
-		return matching_icons[specific_text]
-	return null
-
-func _assign_joypad_0_to_last() -> void:
-	if last_joypad_device != intial_joypad_device : return
-	var connected_joypads := Input.get_connected_joypads()
-	if connected_joypads.is_empty(): return
-	last_joypad_device = InputEventHelper.get_device_name_by_id(connected_joypads[0])
-
-func _input(event : InputEvent) -> void:
-	var device_name = InputEventHelper.get_device_name(event)
-	if device_name != InputEventHelper.DEVICE_GENERIC and device_name != last_joypad_device:
-		last_joypad_device = device_name
-		joypad_device_changed.emit()
-
-func _ready() -> void:
-	_assign_joypad_0_to_last()
-	if files.size() == 0:
-		_refresh_files()
-	if matching_icons.size() == 0:
-		_match_icons_to_inputs()
-"
-
-[sub_resource type="PackedScene" id="PackedScene_8tg4s"]
-_bundled = {
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("InputIconMapper", "Node", "script"),
-"node_count": 1,
-"node_paths": [],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 1, 2, 0, 0),
-"variants": [SubResource("GDScript_dqr2x")],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_20j2n"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("InputIconMapper"),
-"node_count": 1,
-"node_paths": [],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 0, 0),
-"variants": [SubResource("PackedScene_8tg4s")],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_ck3wh"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("Controls", "InputActionsList", "input_icon_mapper", "InputActionsTree", "input_icon_mapper", "InputIconMapper"),
-"node_count": 4,
-"node_paths": [NodePath("./VBoxContainer/InputMappingContainer"), NodePath("./VBoxContainer/InputMappingContainer"), NodePath(".")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 0, 0, 1073741824, -1, 2147483647, 524289, -1, 1, 1073741826, 1, 0, 1073741825, -1, 2147483647, 786435, -1, 1, 1073741828, 2, 0, 1073741826, 0, 2147483647, 1835013, 3, 0, 0),
-"variants": [SubResource("PackedScene_gpor5"), NodePath("../../../InputIconMapper"), NodePath("../../../InputIconMapper"), SubResource("PackedScene_20j2n")],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_p0l08"]
-script/source = "@tool
-class_name OptionControl
-extends Control
-## Generic scene for editing a value of the [PlayerConfig].
-
-signal setting_changed(value)
-
-enum OptionSections{
-	NONE,
-	INPUT,
-	AUDIO,
-	VIDEO,
-	GAME,
-	APPLICATION,
-	CUSTOM,
-}
-
-const OptionSectionNames : Dictionary = {
-	OptionSections.NONE : \"\",
-	OptionSections.INPUT : AppSettings.INPUT_SECTION,
-	OptionSections.AUDIO : AppSettings.AUDIO_SECTION,
-	OptionSections.VIDEO : AppSettings.VIDEO_SECTION,
-	OptionSections.GAME : AppSettings.GAME_SECTION,
-	OptionSections.APPLICATION : AppSettings.APPLICATION_SECTION,
-	OptionSections.CUSTOM : AppSettings.CUSTOM_SECTION,
-}
-
-## Locks config names in case of issues with inherited scenes.
-## Intentionally put first for initialization.
-@export var lock_config_names : bool = false
-## Defines text displayed to the user.
-@export var option_name : String :
-	set(value):
-		var _update_config : bool = option_name.to_pascal_case() == key and not lock_config_names
-		option_name = value
-		if is_inside_tree():
-			%OptionLabel.text = \"%s%s\" % [option_name, label_suffix]
-		if _update_config:
-			key = option_name.to_pascal_case()
-## Defines what section in the config file this option belongs under.
-@export var option_section : OptionSections :
-	set(value):
-		var _update_config : bool = OptionSectionNames[option_section] == section and not lock_config_names
-		option_section = value
-		if _update_config:
-			section = OptionSectionNames[option_section]
-
-@export_group(\"Config Names\")
-## Defines the key for this option variable in the config file.
-@export var key : String
-## Defines the section for this option variable in the config file.
-@export var section : String
-@export_group(\"Format\")
-@export var label_suffix : String = \" :\"
-@export_group(\"Properties\")
-## Defines whether the option is editable, or only visible by the user.
-@export var editable : bool = true : set = set_editable
-## Defines what kind of variable this option stores in the config file.
-@export var property_type : Variant.Type = TYPE_BOOL
-
-## It is advised to use an external editor to set the default value in the scene file.
-## Godot can experience a bug (caching issue?) that may undo changes.
-var default_value
-var _connected_nodes : Array
-
-func _on_setting_changed(value) -> void:
-	if Engine.is_editor_hint(): return
-	PlayerConfig.set_config(section, key, value)
-	setting_changed.emit(value)
-
-func _get_setting(default : Variant = null) -> Variant:
-	return PlayerConfig.get_config(section, key, default)
-
-func _connect_option_inputs(node) -> void:
-	if node in _connected_nodes: return
-	if node is Button:
-		if node is OptionButton:
-			node.item_selected.connect(_on_setting_changed)
-		elif node is ColorPickerButton:
-			node.color_changed.connect(_on_setting_changed)
-		else:
-			node.toggled.connect(_on_setting_changed)
-		_connected_nodes.append(node)
-	if node is Range:
-		node.value_changed.connect(_on_setting_changed)
-		_connected_nodes.append(node)
-	if node is LineEdit or node is TextEdit:
-		node.text_changed.connect(_on_setting_changed)
-		_connected_nodes.append(node)
-
-func set_value(value : Variant) -> void:
-	if value == null:
-		return
-	for node in get_children():
-		if node is Button:
-			if node is OptionButton:
-				node.select(value as int)
-			elif node is ColorPickerButton:
-				node.color = value as Color
-			else:
-				node.button_pressed = value as bool
-		if node is Range:
-			node.value = value as float
-		if node is LineEdit or node is TextEdit:
-			node.text = \"%s\" % value
-
-func set_editable(value : bool = true) -> void:
-	editable = value
-	for node in get_children():
-		if node is Button:
-			node.disabled = !editable
-		if node is Slider or node is SpinBox or node is LineEdit or node is TextEdit:
-			node.editable = editable
-
-func _ready() -> void:
-	lock_config_names = lock_config_names
-	option_section = option_section
-	option_name = option_name
-	property_type = property_type
-	default_value = default_value
-	set_value(_get_setting(default_value))
-	for child in get_children():
-		_connect_option_inputs(child)
-	child_entered_tree.connect(_connect_option_inputs)
-
-func _set(property : StringName, value : Variant) -> bool:
-	if property == \"value\":
-		set_value(value)
-		return true
-	return false
-
-func _get_property_list() -> Array[Dictionary]:
-	return [
-		{ \"name\": \"value\", \"type\": property_type, \"usage\": PROPERTY_USAGE_NONE},
-		{ \"name\": \"default_value\", \"type\": property_type}
-	]
-"
-
-[sub_resource type="PackedScene" id="PackedScene_oo80c"]
-_bundled = {
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("OptionControl", "HBoxContainer", "custom_minimum_size", "offset_right", "offset_bottom", "script", "default_value", "OptionLabel", "Label", "unique_name_in_owner", "layout_mode", "size_flags_horizontal", "text", "vertical_alignment"),
-"node_count": 2,
-"node_paths": [NodePath(".")],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 5, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 0, 1073741824, 0, 8, 7, -1, 5, 9, 5, 10, 6, 11, 7, 12, 8, 13, 9, 0),
-"variants": [Vector2(0, 40), 400.0, 40.0, SubResource("GDScript_p0l08"), false, true, 2, 3, " :", 1],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_uxa2e"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("OptionControl", "custom_minimum_size", "offset_bottom", "property_type", "default_value", "HSlider", "HSlider", "custom_minimum_size", "layout_mode", "size_flags_vertical", "max_value", "step", "value", "tick_count", "ticks_on_borders"),
-"node_count": 2,
-"node_paths": [NodePath(".")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 4, 1, 1, 2, 2, 3, 3, 4, 4, 0, 1073741824, 0, 6, 524293, -1, 8, 7, 5, 8, 6, 9, 7, 10, 8, 11, 9, 12, 10, 13, 11, 14, 12, 0),
-"variants": [SubResource("PackedScene_oo80c"), Vector2(0, 28), 28.0, 3, 1.0, Vector2(256, 0), 2, 4, 1.0, 0.05, 1.0, 11, true],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_is1bs"]
-_bundled = {
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [NodePath("VBoxContainer/MarginContainer/VBoxContainer/MouseSensitivityControl"), NodePath("VBoxContainer/MarginContainer/VBoxContainer/JoypadSensitivityControl")],
-"names": PackedStringArray("Inputs", "MarginContainer", "anchors_preset", "anchor_right", "anchor_bottom", "grow_horizontal", "grow_vertical", "size_flags_horizontal", "size_flags_vertical", "VBoxContainer", "VBoxContainer", "layout_mode", "size_flags_horizontal", "size_flags_vertical", "theme_override_constants/separation", "script", "search_depth", "MarginContainer", "MarginContainer", "layout_mode", "theme_override_constants/margin_top", "theme_override_constants/margin_bottom", "VBoxContainer", "VBoxContainer", "layout_mode", "size_flags_vertical", "theme_override_constants/separation", "alignment", "MouseSensitivityControl", "layout_mode", "option_name", "option_section", "key", "section", "OptionLabel", "text", "HSlider", "min_value", "max_value", "tick_count", "JoypadSensitivityControl", "layout_mode", "option_name", "option_section", "key", "section", "OptionLabel", "text", "HSlider", "min_value", "max_value", "tick_count"),
-"node_count": 10,
-"node_paths": [NodePath("."), NodePath("./VBoxContainer"), NodePath("./VBoxContainer/MarginContainer"), NodePath("./VBoxContainer/MarginContainer/VBoxContainer"), NodePath("./VBoxContainer/MarginContainer/VBoxContainer/MouseSensitivityControl"), NodePath("./VBoxContainer/MarginContainer/VBoxContainer/MouseSensitivityControl"), NodePath("./VBoxContainer/MarginContainer/VBoxContainer"), NodePath("./VBoxContainer/MarginContainer/VBoxContainer/JoypadSensitivityControl"), NodePath("./VBoxContainer/MarginContainer/VBoxContainer/JoypadSensitivityControl")],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 7, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 8, 6, 0, 1073741824, 0, 10, 9, -1, 6, 11, 7, 12, 8, 13, 9, 14, 10, 15, 11, 16, 12, 0, 1073741825, 0, 18, 17, -1, 3, 19, 13, 20, 14, 21, 15, 0, 1073741826, 0, 23, 22, -1, 4, 24, 16, 25, 17, 26, 18, 27, 19, 0, 1073741827, 0, 2147483647, 28, 20, 5, 29, 21, 30, 22, 31, 23, 32, 24, 33, 25, 0, 1073741828, -1, 2147483647, 262178, -1, 1, 35, 26, 0, 1073741829, -1, 2147483647, 524324, -1, 3, 37, 27, 38, 28, 39, 29, 0, 1073741830, 0, 2147483647, 40, 30, 5, 41, 31, 42, 32, 43, 33, 44, 34, 45, 35, 0, 1073741831, -1, 2147483647, 262190, -1, 1, 47, 36, 0, 1073741832, -1, 2147483647, 524336, -1, 3, 49, 37, 50, 38, 51, 39, 0),
-"variants": [15, 1.0, 1.0, 2, 2, 3, 3, 2, 4, 4, 8, SubResource("GDScript_dnslt"), 5, 2, 32, 32, 2, 3, 8, 1, SubResource("PackedScene_uxa2e"), 2, "Mouse Sensitivity", 1, "MouseSensitivity", "InputSettings", "Mouse Sensitivity :", 0.25, 2.0, 8, SubResource("PackedScene_uxa2e"), 2, "Joypad Sensitivity", 1, "JoypadSensitivity", "InputSettings", "Joypad Sensitivity :", 0.25, 2.0, 8],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_tdibn"]
-script/source = "extends Control
-
-## Scene for adjusting the volume of the audio busses.
-@export var audio_control_scene : PackedScene
-## Optional names of audio busses that should be ignored.
-@export var hide_busses : Array[String]
-
-@onready var mute_control = %MuteControl
-
-func _on_bus_changed(bus_value : float, bus_iter : int) -> void:
-	AppSettings.set_bus_volume(bus_iter, bus_value)
-
-func _add_audio_control(bus_name : String, bus_value : float, bus_iter : int) -> void:
-	if audio_control_scene == null or bus_name in hide_busses or bus_name.begins_with(AppSettings.SYSTEM_BUS_NAME_PREFIX):
-		return
-	var audio_control = audio_control_scene.instantiate()
-	%AudioControlContainer.call_deferred(\"add_child\", audio_control)
-	if audio_control is OptionControl:
-		audio_control.option_section = OptionControl.OptionSections.AUDIO
-		audio_control.option_name = bus_name
-		audio_control.value = bus_value
-		audio_control.connect(\"setting_changed\", _on_bus_changed.bind(bus_iter))
-
-func _add_audio_bus_controls() -> void:
-	for bus_iter in AudioServer.bus_count:
-		var bus_name : String = AppSettings.get_audio_bus_name(bus_iter)
-		var linear : float = AppSettings.get_bus_volume(bus_iter)
-		_add_audio_control(bus_name, linear, bus_iter)
-
-func _update_ui() -> void:
-	_add_audio_bus_controls()
-	mute_control.value = AppSettings.is_muted()
-
-func _ready() -> void:
-	_update_ui()
-
-func _on_mute_control_setting_changed(value : bool) -> void:
-	AppSettings.set_mute(value)
-"
-
-[sub_resource type="PackedScene" id="PackedScene_pbvv0"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("OptionControl", "CheckButton", "CheckButton", "layout_mode"),
-"node_count": 2,
-"node_paths": [NodePath(".")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 0, 0, 1073741824, 0, 2, 524289, -1, 1, 3, 1, 0),
-"variants": [SubResource("PackedScene_oo80c"), 2],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_lsqul"]
-_bundled = {
-"conn_count": 1,
-"conns": PackedInt32Array(1073741828, 1073741827, 34, 33, 2, 0, 0),
-"editable_instances": [],
-"names": PackedStringArray("Audio", "MarginContainer", "custom_minimum_size", "anchors_preset", "anchor_right", "anchor_bottom", "grow_horizontal", "grow_vertical", "theme_override_constants/margin_top", "theme_override_constants/margin_bottom", "script", "audio_control_scene", "VBoxContainer", "VBoxContainer", "custom_minimum_size", "layout_mode", "size_flags_horizontal", "theme_override_constants/separation", "alignment", "script", "search_depth", "AudioControlContainer", "VBoxContainer", "unique_name_in_owner", "layout_mode", "theme_override_constants/separation", "MuteControl", "unique_name_in_owner", "layout_mode", "option_name", "option_section", "key", "section", "_on_mute_control_setting_changed", "setting_changed"),
-"node_count": 4,
-"node_paths": [NodePath("."), NodePath("./VBoxContainer"), NodePath("./VBoxContainer"), NodePath("."), NodePath("VBoxContainer/MuteControl")],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 10, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 8, 6, 9, 7, 10, 8, 11, 9, 0, 1073741824, 0, 13, 12, -1, 7, 14, 10, 15, 11, 16, 12, 17, 13, 18, 14, 19, 15, 20, 16, 0, 1073741825, 0, 22, 21, -1, 3, 23, 17, 24, 18, 25, 19, 0, 1073741826, 0, 2147483647, 26, 20, 6, 27, 21, 28, 22, 29, 23, 30, 24, 31, 25, 32, 26, 0),
-"variants": [Vector2(305, 0), 15, 1.0, 1.0, 2, 2, 24, 24, SubResource("GDScript_tdibn"), SubResource("PackedScene_uxa2e"), Vector2(400, 0), 2, 4, 8, 1, SubResource("GDScript_dnslt"), 3, true, 2, 8, SubResource("PackedScene_pbvv0"), true, 2, "Mute", 2, "Mute", "AudioSettings"],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_lduvt"]
-script/source = "@tool
-class_name ListOptionControl
-extends OptionControl
-
-## Locks Option Titles from auto-updating when editing Option Values.
-## Intentionally put first for initialization.
-@export var lock_titles : bool = false
-## Defines the list of possible values for the variable
-## this option stores in the config file.
-@export var option_values : Array :
-	set(value) :
-		option_values = value
-		_on_option_values_changed()
-
-## Defines the list of options displayed to the user.
-## Length should match with Option Values.
-@export var option_titles : Array[String] :
-	set(value):
-		option_titles = value
-		if is_inside_tree():
-			_set_option_list(option_titles)
-
-var custom_option_values : Array
-
-func _on_option_values_changed() -> void:
-	if option_values.is_empty(): return
-	custom_option_values = option_values.duplicate()
-	var first_value = custom_option_values.front()
-	property_type = typeof(first_value)
-	_set_titles_from_values()
-
-func _on_setting_changed(value : Variant) -> void:
-	if value < custom_option_values.size() and value >= 0:
-		super._on_setting_changed(custom_option_values[value])
-
-func _set_titles_from_values() -> void:
-	if lock_titles: return
-	var mapped_titles : Array[String] = []
-	for option_value in custom_option_values:
-		mapped_titles.append(_value_title_map(option_value))
-	option_titles = mapped_titles
-
-func _value_title_map(value : Variant) -> String:
-	return \"%s\" % value
-
-func _match_value_to_other(value : Variant, other : Variant) -> Variant:
-	# Primarily for when the editor saves floats as ints instead
-	if value is int and other is float:
-		return float(value)
-	if value is float and other is int:
-		return int(round(value))
-	return value
-
-func _refresh_option_values(value : Variant) -> void:
-	if option_values.is_empty(): return
-	if value == null:
-		return
-	custom_option_values = option_values.duplicate()
-	value = _match_value_to_other(value, custom_option_values.front())
-	if value not in custom_option_values and typeof(value) == property_type:
-		custom_option_values.append(value)
-		custom_option_values.sort()
-	_set_titles_from_values()
-	if value not in option_values:
-		disable_option(custom_option_values.find(value))
-
-func set_value(value : Variant) -> void:
-	_refresh_option_values(value)
-	value = custom_option_values.find(value)
-	super.set_value(value)
-
-func _set_option_list(option_titles_list : Array) -> void:
-	%OptionButton.clear()
-	for option_title in option_titles_list:
-		%OptionButton.add_item(option_title)
-
-func disable_option(option_index : int, disabled : bool = true) -> void:
-	%OptionButton.set_item_disabled(option_index, disabled)
-
-func _ready() -> void:
-	lock_titles = lock_titles
-	option_titles = option_titles
-	option_values = option_values
-	super._ready()
-"
-
-[sub_resource type="PackedScene" id="PackedScene_o76mb"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("OptionControl", "script", "lock_titles", "option_values", "option_titles", "OptionButton", "OptionButton", "unique_name_in_owner", "layout_mode"),
-"node_count": 2,
-"node_paths": [NodePath(".")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 4, 1, 1, 2, 2, 3, 3, 4, 4, 0, 1073741824, 0, 6, 524293, -1, 2, 7, 5, 8, 6, 0),
-"variants": [SubResource("PackedScene_oo80c"), SubResource("GDScript_lduvt"), false, [], [], true, 2],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_15pg1"]
-script/source = "@tool
-extends ListOptionControl
-
-func _set_input_device() -> void:
-	var current_setting : Variant = _get_setting(default_value)
-	if current_setting is bool:
-		current_setting = &\"Default\"
-	AudioServer.input_device = _get_setting(default_value)
-
-func _add_microphone_audio_stream() -> void:
-	var instance := AudioStreamPlayer.new()
-	instance.stream = AudioStreamMicrophone.new()
-	instance.autoplay = true
-	add_child.call_deferred(instance)
-	instance.ready.connect(_set_input_device)
-
-func _ready() -> void:
-	if ProjectSettings.get_setting(\"audio/driver/enable_input\", false):
-		if AudioServer.input_device.is_empty():
-			_add_microphone_audio_stream()
-		else:
-			_set_input_device()
-		if not Engine.is_editor_hint():
-			option_values = AudioServer.get_input_device_list()
-	else:
-		hide()
-	super._ready()
-
-func _on_setting_changed(value : Variant) -> void:
-	if value >= option_values.size(): return
-	AudioServer.input_device = option_values[value]
-	super._on_setting_changed(value)
-
-func _value_title_map(value : Variant) -> String:
-	if value is String:
-		return value
-	else:
-		return super._value_title_map(value)
-"
-
-[sub_resource type="PackedScene" id="PackedScene_llhxb"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("AudioInputOptionControl", "script", "option_name", "option_section", "key", "section", "property_type", "OptionLabel", "text", "OptionButton", "size_flags_horizontal", "text_overrun_behavior", "clip_text"),
-"node_count": 3,
-"node_paths": [NodePath("."), NodePath(".")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 0, 1073741824, -1, 2147483647, 262151, -1, 1, 8, 7, 0, 1073741825, -1, 2147483647, 524297, -1, 3, 10, 8, 11, 9, 12, 10, 0),
-"variants": [SubResource("PackedScene_o76mb"), SubResource("GDScript_15pg1"), "Input Device", 2, "InputDevice", "AudioSettings", 4, "Input Device :", 3, 1, true],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_p6vqo"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("Audio", "AudioInputOptionControl", "layout_mode"),
-"node_count": 2,
-"node_paths": [NodePath("./VBoxContainer")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 0, 0, 1073741824, 0, 2147483647, 786433, 1, 1, 2, 2, 0),
-"variants": [SubResource("PackedScene_lsqul"), SubResource("PackedScene_llhxb"), 2],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_r76xh"]
-script/source = "extends Control
-
-func _preselect_resolution(window : Window) -> void:
-	%ResolutionControl.value = window.size
-
-func _update_resolution_options_enabled(window : Window) -> void:
-	if OS.has_feature(\"web\"):
-		%ResolutionControl.editable = false
-		%ResolutionControl.tooltip_text = \"Disabled for web\"
-	elif AppSettings.is_fullscreen(window):
-		%ResolutionControl.editable = false
-		%ResolutionControl.tooltip_text = \"Disabled for fullscreen\"
-	else:
-		%ResolutionControl.editable = true
-		%ResolutionControl.tooltip_text = \"Select a screen size\"
-
-func _update_ui(window : Window) -> void:
-	%FullscreenControl.value = AppSettings.is_fullscreen(window)
-	_preselect_resolution(window)
-	%VSyncControl.value = AppSettings.get_vsync(window)
-	_update_resolution_options_enabled(window)
-
-func _ready() -> void:
-	var window : Window = get_window()
-	_update_ui(window)
-	window.connect(\"size_changed\", _preselect_resolution.bind(window))
-
-func _on_fullscreen_control_setting_changed(value) -> void:
-	var window : Window = get_window()
-	AppSettings.set_fullscreen_enabled(value, window)
-	_update_resolution_options_enabled(window)
-
-func _on_resolution_control_setting_changed(value) -> void:
-	AppSettings.set_resolution(value, get_window(), false)
-
-func _on_v_sync_control_setting_changed(value) -> void:
-	AppSettings.set_vsync(value, get_window())
-"
-
-[sub_resource type="GDScript" id="GDScript_ntdyb"]
-script/source = "@tool
-class_name Vector2ListOptionControl
-extends ListOptionControl
-
-func _value_title_map(value : Variant) -> String:
-	if value is Vector2 or value is Vector2i:
-		return \"%d x %d\" % [value.x , value.y]
-	else:
-		return super._value_title_map(value)
-"
-
-[sub_resource type="PackedScene" id="PackedScene_rh2k3"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("OptionControl", "script"),
-"node_count": 1,
-"node_paths": [],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 1, 1, 1, 0),
-"variants": [SubResource("PackedScene_o76mb"), SubResource("GDScript_ntdyb")],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_jr5d5"]
-_bundled = {
-"conn_count": 3,
-"conns": PackedInt32Array(1073741829, 1073741828, 47, 46, 2, 0, 0, 1073741831, 1073741830, 49, 48, 2, 0, 0, 1073741833, 1073741832, 51, 50, 2, 0, 0),
-"editable_instances": [],
-"names": PackedStringArray("Video", "MarginContainer", "anchors_preset", "anchor_right", "anchor_bottom", "theme_override_constants/margin_top", "theme_override_constants/margin_bottom", "script", "VBoxContainer", "VBoxContainer", "custom_minimum_size", "layout_mode", "size_flags_horizontal", "alignment", "script", "search_depth", "FullscreenControl", "unique_name_in_owner", "layout_mode", "option_name", "option_section", "key", "section", "ResolutionControl", "unique_name_in_owner", "layout_mode", "tooltip_text", "option_values", "option_titles", "option_name", "option_section", "key", "section", "property_type", "VSyncControl", "unique_name_in_owner", "layout_mode", "lock_titles", "option_values", "option_titles", "option_name", "option_section", "key", "section", "property_type", "default_value", "_on_fullscreen_control_setting_changed", "setting_changed", "_on_resolution_control_setting_changed", "setting_changed", "_on_v_sync_control_setting_changed", "setting_changed"),
-"node_count": 5,
-"node_paths": [NodePath("."), NodePath("./VBoxContainer"), NodePath("./VBoxContainer"), NodePath("./VBoxContainer"), NodePath("."), NodePath("VBoxContainer/FullscreenControl"), NodePath("."), NodePath("VBoxContainer/ResolutionControl"), NodePath("."), NodePath("VBoxContainer/VSyncControl")],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 6, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 0, 1073741824, 0, 9, 8, -1, 6, 10, 6, 11, 7, 12, 8, 13, 9, 14, 10, 15, 11, 0, 1073741825, 0, 2147483647, 16, 12, 6, 17, 13, 18, 14, 19, 15, 20, 16, 21, 17, 22, 18, 0, 1073741826, 0, 2147483647, 23, 19, 10, 24, 20, 25, 21, 26, 22, 27, 23, 28, 24, 29, 25, 30, 26, 31, 27, 32, 28, 33, 29, 0, 1073741827, 0, 2147483647, 34, 30, 11, 35, 31, 36, 32, 37, 33, 38, 34, 39, 35, 40, 36, 41, 37, 42, 38, 43, 39, 44, 40, 45, 41, 0),
-"variants": [15, 1.0, 1.0, 24, 24, SubResource("GDScript_r76xh"), Vector2(400, 0), 2, 4, 1, SubResource("GDScript_dnslt"), 2, SubResource("PackedScene_pbvv0"), true, 2, "Fullscreen", 3, "Fullscreen", "VideoSettings", SubResource("PackedScene_rh2k3"), true, 2, "Select a screen size", [Vector2i(640, 360), Vector2i(960, 540), Vector2i(1024, 576), Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2048, 1152), Vector2i(2560, 1440), Vector2i(3200, 1800), Vector2i(3840, 2160)], Array[String](["640 x 360", "960 x 540", "1024 x 576", "1280 x 720", "1600 x 900", "1920 x 1080", "2048 x 1152", "2560 x 1440", "3200 x 1800", "3840 x 2160"]), "Resolution", 3, "ScreenResolution", "VideoSettings", 6, SubResource("PackedScene_o76mb"), true, 2, true, [0, 1, 2, 3], Array[String](["Disabled", "Enabled", "Adaptive", "Mailbox"]), "V-Sync", 3, "V-Sync", "VideoSettings", 2, 0],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_gpkwl"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("Video", "AntiAliasingControl", "layout_mode", "lock_titles", "option_values", "option_titles", "option_name", "option_section", "key", "section", "property_type", "default_value", "CameraShakeControl", "visible", "layout_mode", "lock_titles", "option_values", "option_titles", "option_name", "option_section", "key", "section", "property_type", "default_value"),
-"node_count": 3,
-"node_paths": [NodePath("./VBoxContainer"), NodePath("./VBoxContainer")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 0, 0, 1073741824, 0, 2147483647, 1048577, 1, 10, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 0, 1073741825, 0, 2147483647, 1310732, 12, 11, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 23, 0),
-"variants": [SubResource("PackedScene_jr5d5"), SubResource("PackedScene_o76mb"), 2, true, [0, 1, 2, 3], Array[String](["Disabled (Fastest)", "2x", "4x", "8x (Slowest)"]), "Anti-Aliasing", 3, "Anti-aliasing", "VideoSettings", 2, 0, SubResource("PackedScene_o76mb"), false, 2, true, [1.0, 0.75, 0.5, 0.0], Array[String](["Normal", "Reduced", "Minimal", "None"]), "Camera Shake", 3, "CameraShake", "VideoSettings", 3, 1.0],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_gq71w"]
-_bundled = {
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("MasterOptionsMenu", "anchors_preset", "anchor_right", "anchor_bottom", "grow_horizontal", "grow_vertical", "tab_alignment", "current_tab", "script", "TabContainer", "Controls", "layout_mode", "metadata/_tab_index", "Inputs", "visible", "Audio", "Video"),
-"node_count": 5,
-"node_paths": [],
-"nodes": PackedInt32Array(-1, -1, 9, 0, -1, 8, 1, 0, 2, 1, 3, 1, 4, 2, 5, 2, 6, 3, 7, 4, 8, 5, 0, 0, 0, 2147483647, 10, 6, 2, 11, 2, 12, 4, 0, 0, 0, 2147483647, 13, 7, 3, 14, 8, 11, 2, 12, 3, 0, 0, 0, 2147483647, 15, 9, 3, 14, 8, 11, 2, 12, 2, 0, 0, 0, 2147483647, 16, 10, 3, 14, 8, 11, 2, 12, 11, 0),
-"variants": [15, 1.0, 2, 1, 0, SubResource("GDScript_8qp3c"), SubResource("PackedScene_ck3wh"), SubResource("PackedScene_is1bs"), false, SubResource("PackedScene_p6vqo"), SubResource("PackedScene_gpkwl"), 3],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_7wyjv"]
-_bundled = {
-"base_scene": 0,
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("PauseMenuOptionsOverlaidWindow", "process_mode", "anchors_preset", "anchor_left", "anchor_top", "anchor_right", "anchor_bottom", "offset_left", "offset_top", "offset_right", "offset_bottom", "packed_scene", "title_visible", "TitleMargin", "visible", "TitleLabel", "text", "CloseButton", "size_flags_horizontal", "text"),
-"node_count": 4,
-"node_paths": [NodePath("./ContentContainer/BoxContainer"), NodePath("./ContentContainer/BoxContainer/TitleMargin/BoxContainer"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons")],
-"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 12, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 0, 1073741824, -1, 2147483647, 262157, -1, 1, 14, 13, 0, 1073741825, -1, 2147483647, 262159, -1, 1, 16, 14, 0, 1073741826, -1, 2147483647, 262161, -1, 2, 18, 15, 19, 16, 0),
-"variants": [SubResource("PackedScene_onvsj"), 3, 15, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, SubResource("PackedScene_gq71w"), false, false, "Options", 0, "Back"],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_rqent"]
-_bundled = {
-"conn_count": 7,
-"conns": PackedInt32Array(1073741839, 1073741838, 74, 73, 2, 0, 0, 1073741841, 1073741840, 76, 75, 2, 0, 0, 1073741843, 1073741842, 78, 77, 2, 0, 0, 1073741845, 1073741844, 80, 79, 2, 0, 0, 1073741847, 1073741846, 82, 81, 2, 0, 0, 1073741849, 1073741848, 84, 83, 2, 0, 0, 1073741851, 1073741850, 86, 85, 2, 0, 0),
-"editable_instances": [NodePath("PauseMenu")],
-"names": PackedStringArray("PauseMenuLayer", "CanvasLayer", "process_mode", "script", "PauseMenu", "unique_name_in_owner", "process_mode", "custom_minimum_size", "script", "options_menu_scene", "main_menu_scene_path", "restart_confirmation_node_path", "main_menu_confirmation_node_path", "exit_confirmation_node_path", "menu_container_node_path", "pauses_game", "update_content", "title", "TitleLabel", "text", "BodyMargin", "visible", "MenuButtonsMargin", "size_flags_vertical", "CloseButton", "text", "RestartButton", "Button", "layout_mode", "text", "SaveGameButton", "Button", "unique_name_in_owner", "visible", "layout_mode", "text", "LoadGameButton", "Button", "unique_name_in_owner", "visible", "layout_mode", "text", "OptionsButton", "Button", "unique_name_in_owner", "layout_mode", "text", "MainMenuButton", "Button", "unique_name_in_owner", "layout_mode", "text", "ExitButton", "Button", "unique_name_in_owner", "layout_mode", "text", "RestartConfirmation", "unique_name_in_owner", "visible", "text", "title", "MainMenuConfirmation", "unique_name_in_owner", "visible", "custom_minimum_size", "text", "title", "ExitConfirmation", "unique_name_in_owner", "visible", "text", "title", "_on_pause_menu_hidden", "hidden", "_on_restart_button_pressed", "pressed", "_on_save_game_button_pressed", "pressed", "_on_load_game_button_pressed", "pressed", "_on_options_button_pressed", "pressed", "_on_main_menu_button_pressed", "pressed", "_on_exit_button_pressed", "pressed"),
-"node_count": 15,
-"node_paths": [NodePath("."), NodePath("./PauseMenu/ContentContainer/BoxContainer/TitleMargin/BoxContainer"), NodePath("./PauseMenu/ContentContainer/BoxContainer"), NodePath("./PauseMenu/ContentContainer/BoxContainer"), NodePath("./PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("."), NodePath("."), NodePath("."), NodePath("."), NodePath("PauseMenu"), NodePath("PauseMenu"), NodePath("PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/RestartButton"), NodePath("PauseMenu"), NodePath("PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/SaveGameButton"), NodePath("PauseMenu"), NodePath("PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/LoadGameButton"), NodePath("PauseMenu"), NodePath("PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/OptionsButton"), NodePath("PauseMenu"), NodePath("PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/MainMenuButton"), NodePath("PauseMenu"), NodePath("PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/ExitButton")],
-"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 2, 2, 0, 3, 1, 0, 1073741824, 0, 2147483647, 4, 2, 13, 5, 3, 6, 4, 7, 5, 8, 6, 9, 7, 10, 8, 11, 9, 12, 10, 13, 11, 14, 12, 15, 13, 16, 14, 17, 15, 0, 1073741825, -1, 2147483647, 262162, -1, 1, 19, 16, 0, 1073741826, -1, 2147483647, 524308, -1, 1, 21, 17, 0, 1073741827, -1, 2147483647, 786454, -1, 1, 23, 18, 0, 1073741828, -1, 2147483647, 262168, -1, 1, 25, 19, 0, 1073741829, 0, 27, 524314, -1, 2, 28, 20, 29, 21, 0, 1073741830, 0, 31, 786462, -1, 4, 32, 22, 33, 23, 34, 24, 35, 25, 0, 1073741831, 0, 37, 1048612, -1, 4, 38, 26, 39, 27, 40, 28, 41, 29, 0, 1073741832, 0, 43, 1310762, -1, 3, 44, 30, 45, 31, 46, 32, 0, 1073741833, 0, 48, 1572911, -1, 3, 49, 33, 50, 34, 51, 35, 0, 1073741834, 0, 53, 1835060, -1, 3, 54, 36, 55, 37, 56, 38, 0, 1073741835, 0, 2147483647, 57, 39, 4, 58, 40, 59, 41, 60, 42, 61, 43, 0, 1073741836, 0, 2147483647, 62, 44, 5, 63, 45, 64, 46, 65, 47, 66, 48, 67, 49, 0, 1073741837, 0, 2147483647, 68, 50, 4, 69, 51, 70, 52, 71, 53, 72, 54, 0),
-"variants": [3, SubResource("GDScript_seekm"), SubResource("PackedScene_ul61k"), true, 3, Vector2(256, 312), SubResource("GDScript_vbgr5"), SubResource("PackedScene_7wyjv"), "res://scenes/menus/main_menu/main_menu_with_animations.tscn", NodePath("../RestartConfirmation"), NodePath("../MainMenuConfirmation"), NodePath("../ExitConfirmation"), NodePath(".."), true, true, "Paused", "Paused", false, 3, "Resume", 2, "Restart", true, false, 2, "Save Game", true, false, 2, "Load Game", true, 2, "Options", true, 2, "Main Menu", true, 2, "Exit Game", SubResource("PackedScene_g2ndc"), true, false, "Restart the game?", "Confirm Restart", SubResource("PackedScene_g2ndc"), true, false, Vector2(220, 0), "Exit to the main menu?", "Confirm Exit", SubResource("PackedScene_g2ndc"), true, false, "Exit the game?", "Confirm Exit"],
-"version": 3
-}
-
-[sub_resource type="GDScript" id="GDScript_uplwd"]
-script/source = "@tool
-class_name LevelLoader
-extends Node
-## Loads scenes into a container.
-
-signal level_load_started
-signal level_loaded
-signal level_ready
-
-## Container where the level instance will be added.
-@export var level_container : Node
-## Optional reference to a loading screen in the scene.
-@export var level_loading_screen : LoadingScreen
-@export_group(\"Debugging\")
-@export var current_level : Node
-
-var is_loading : bool = false
-
-func _attach_level(level_resource : Resource):
-	assert(level_container != null, \"level_container is null\")
-	var instance = level_resource.instantiate()
-	level_container.call_deferred(\"add_child\", instance)
-	return instance
-
-func load_level(level_path : String):
-	if is_loading : return
-	if is_instance_valid(current_level):
-		current_level.queue_free()
-		await current_level.tree_exited
-		current_level = null
-	is_loading = true
-	SceneLoader.load_scene(level_path, true)
-	if level_loading_screen:
-		level_loading_screen.reset()
-	level_load_started.emit()
-	await SceneLoader.scene_loaded
-	is_loading = false
-	current_level = _attach_level(SceneLoader.get_resource())
-	if level_loading_screen:
-		level_loading_screen.close()
-	level_loaded.emit()
-	await current_level.ready
-	level_ready.emit()
-"
-
-[sub_resource type="GDScript" id="GDScript_jckqn"]
-script/source = "class_name LevelManager
-extends Node
-## Manage level changes in games.
-##
-## A helper script to assign to a node in a scene.
-## It works with a level loader and can open menus when players win or lose.
-## It can either be assigned a starting level path or a scene lister.
-## It can detect signals from levels to change levels in an open-world.
-## With a scene lister, it will instead traverse through levels linearly.
-
-## Required reference to a level loader in the scene.
-@export var level_loader : LevelLoader
-## Optional path to a starting level scene.
-## Required if there is no scene lister.
-@export_file var starting_level_path : String
-## Optional reference to a scene lister in the scene.
-## Required if there is no starting level path.
-@export var scene_lister : SceneLister
-## Whether to load the starting level when ready.
-@export var auto_load : bool = true
-@export_group(\"Scenes\")
-## Path to a main menu scene.
-@export_file(\"*.tscn\") var main_menu_scene_path : String
-## Optional path to an ending scene.
-@export_file(\"*.tscn\") var ending_scene_path : String
-## Optional screen to be shown after the game is won.
-@export var game_won_scene : PackedScene
-## Optional screen to be shown after the level is lost.
-@export var level_lost_scene : PackedScene
-## Optional screen to be shown after the level is won.
-@export var level_won_scene : PackedScene
-
-## Reference to the current level node.
-var current_level : Node
-var current_level_path : String : set = set_current_level_path
-var checkpoint_level_path : String : set = set_checkpoint_level_path
-
-func set_current_level_path(value : String) -> void:
-	current_level_path = value
-
-func set_checkpoint_level_path(value : String) -> void:
-	checkpoint_level_path = value
-
-func _try_connecting_signal_to_node(node : Node, signal_name : String, callable : Callable) -> void:
-	if node.has_signal(signal_name) and not node.is_connected(signal_name, callable):
-		node.connect(signal_name, callable)
-
-func _try_connecting_signal_to_level(signal_name : String, callable : Callable) -> void:
-	_try_connecting_signal_to_node(current_level, signal_name, callable)
-
-func get_main_menu_scene_path() -> String:
-	return main_menu_scene_path
-
-func _load_main_menu() -> void:
-	SceneLoader.load_scene(get_main_menu_scene_path())
-
-func _find_in_scene_lister(level_path : String) -> int:
-	if not scene_lister: return -1
-	level_path = ResourceUID.ensure_path(level_path)
-	return scene_lister.files.find(level_path)
-
-func is_on_last_level() -> bool:
-	var current_level_id = _find_in_scene_lister(current_level_path)
-	return current_level_id > -1 and current_level_id == scene_lister.files.size() - 1
-
-func get_relative_level_path(offset : int = 1) -> String:
-	var current_level_id := _find_in_scene_lister(current_level_path)
-	if current_level_id > -1:
-		if current_level_id >= max(0, -(offset)) and current_level_id < scene_lister.files.size() - max(0, offset):
-			current_level_id += offset
-			return scene_lister.files[current_level_id]
-	return \"\"
-
-func get_next_level_path() -> String:
-	return get_relative_level_path(1)
-
-func get_prev_level_path() -> String:
-	return get_relative_level_path(-1)
-
-func get_ending_scene_path() -> String:
-	return ending_scene_path
-
-func _load_ending() -> void:
-	if not get_ending_scene_path().is_empty():
-		SceneLoader.load_scene(get_ending_scene_path())
-	else:
-		_load_main_menu()
-
-func _on_level_lost() -> void:
-	if level_lost_scene:
-		var instance = level_lost_scene.instantiate()
-		get_tree().current_scene.add_child(instance)
-		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
-		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
-	else:
-		_reload_level()
-
-func get_checkpoint_level_path() -> String:
-	if checkpoint_level_path.is_empty():
-		if scene_lister:
-			return scene_lister.files.front()
-		if not starting_level_path.is_empty():
-			return starting_level_path
-	return checkpoint_level_path
-
-func load_level(level_path : String) -> void:
-	current_level_path = level_path
-	level_loader.load_level(level_path)
-
-func _load_checkpoint_level() -> void:
-	load_level(get_checkpoint_level_path())
-
-func _reload_level() -> void:
-	load_level(current_level_path)
-
-func _load_win_screen_or_ending() -> void:
-	if game_won_scene:
-		var instance = game_won_scene.instantiate()
-		get_tree().current_scene.add_child(instance)
-		_try_connecting_signal_to_node(instance, &\"continue_pressed\", _load_ending)
-		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
-		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
-	else:
-		_load_ending()
-
-func _load_level_won_screen_or_checkpoint() -> void:
-	if level_won_scene:
-		var instance = level_won_scene.instantiate()
-		get_tree().current_scene.add_child(instance)
-		_try_connecting_signal_to_node(instance, &\"continue_pressed\", _load_checkpoint_level)
-		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
-		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
-	else:
-		_load_checkpoint_level()
-
-func _on_level_won(next_level_path : String = \"\"):
-	if next_level_path.is_empty():
-		next_level_path = get_next_level_path()
-	if next_level_path.is_empty():
-		_load_win_screen_or_ending()
-	else:
-		checkpoint_level_path = next_level_path
-		_load_level_won_screen_or_checkpoint()
-
-func _on_level_changed(next_level_path : String):
-	checkpoint_level_path = next_level_path
-	_load_checkpoint_level()
-
-func _connect_level_signals() -> void:
-	_try_connecting_signal_to_level(&\"level_lost\", _on_level_lost)
-	_try_connecting_signal_to_level(&\"level_won\", _on_level_won)
-	_try_connecting_signal_to_level(&\"level_changed\", _on_level_changed)
-
-func _on_level_loader_level_loaded() -> void:
-	current_level = level_loader.current_level
-	await current_level.ready
-	_connect_level_signals()
-
-func _on_level_loader_level_load_started() -> void:
-	pass
-
-func _on_level_loader_level_ready() -> void:
-	pass
-
-func _auto_load() -> void:
-	if auto_load:
-		_load_checkpoint_level()
-
-func _ready() -> void:
-	if Engine.is_editor_hint(): return
-	level_loader.level_loaded.connect(_on_level_loader_level_loaded)
-	level_loader.level_ready.connect(_on_level_loader_level_ready)
-	level_loader.level_load_started.connect(_on_level_loader_level_load_started)
-	_auto_load()
-"
-
-[sub_resource type="GDScript" id="GDScript_48t47"]
-script/source = "@tool
-extends OverlaidWindow
-
-signal continue_pressed
-signal main_menu_pressed
-
-func _ready():
-	if OS.has_feature(\"web\"):
-		%ExitButton.hide()
-
-func _on_exit_button_pressed():
-	%ExitConfirmation.show()
-
-func _on_main_menu_button_pressed():
-	%MainMenuConfirmation.show()
-
-func _on_close_button_pressed():
-	continue_pressed.emit()
-	close()
-
-func _on_main_menu_confirmation_confirmed():
-	main_menu_pressed.emit()
-	close()
-
-func _on_exit_confirmation_confirmed():
-	get_tree().quit()
-"
 
 [sub_resource type="PackedScene" id="PackedScene_tdoof"]
 _bundled = {
@@ -2506,12 +717,6 @@ func _ready() -> void:
 	msaa_3d = anti_aliasing as MSAA
 "
 
-[sub_resource type="InputEventKey" id="InputEventKey_seekm"]
-keycode = 69
-
-[sub_resource type="Shortcut" id="Shortcut_ejf1p"]
-events = [SubResource("InputEventKey_seekm")]
-
 [node name="GameUI" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -2519,10 +724,12 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 
 [node name="PauseMenuController" type="Node" parent="." node_paths=PackedStringArray("focused_viewport")]
 script = SubResource("GDScript_6mwjj")
-pause_menu_packed = SubResource("PackedScene_rqent")
+pause_menu_packed = ExtResource("1_ejf1p")
 focused_viewport = NodePath("../ViewportContainer/ConfigurableSubViewport")
 
 [node name="LevelLoader" type="Node" parent="." node_paths=PackedStringArray("level_container", "level_loading_screen")]
@@ -2566,12 +773,21 @@ size = Vector2i(1152, 648)
 render_target_update_mode = 4
 script = SubResource("GDScript_ud2if")
 
-[node name="ItemsController" type="Node" parent="." node_paths=PackedStringArray("focused_viewport")]
+[node name="ItemsController" type="Control" parent="." node_paths=PackedStringArray("focused_viewport")]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("2_seekm")
+inventory_menu_packed = ExtResource("4_dnslt")
 focused_viewport = NodePath("../ViewportContainer/ConfigurableSubViewport")
 
 [node name="InventoryButton" type="Button" parent="."]
 layout_mode = 0
 offset_right = 63.0
 offset_bottom = 61.0
-shortcut = SubResource("Shortcut_ejf1p")
+text = "open inventory"
