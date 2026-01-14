@@ -1,0 +1,25 @@
+[gd_scene load_steps=3 format=3 uid="uid://cataensx6dvtd"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_sfv1e"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_symyc"]
+animations = [{
+"frames": [],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [],
+"loop": true,
+"name": &"walk",
+"speed": 5.0
+}]
+
+[node name="Player" type="Area2D"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CapsuleShape2D_sfv1e")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = SubResource("SpriteFrames_symyc")
+animation = &"idle"
