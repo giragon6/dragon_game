@@ -1,54 +1,41 @@
-[gd_scene load_steps=15 format=3 uid="uid://cataensx6dvtd"]
+[gd_scene load_steps=9 format=3 uid="uid://cataensx6dvtd"]
 
-[ext_resource type="Texture2D" uid="uid://c51ycdr6oevoo" path="res://assets/player/idle.png" id="1_abrql"]
 [ext_resource type="Script" uid="uid://1t0u6cd7tj2l" path="res://entities/player/player.gd" id="1_sglur"]
-[ext_resource type="Texture2D" uid="uid://dm7s0qmjx3es6" path="res://assets/player/run.png" id="2_sglur"]
+[ext_resource type="Texture2D" uid="uid://hk7sap6425qc" path="res://assets/player/amphiptere_idle.png" id="2_abrql"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_sfv1e"]
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_sglur"]
+atlas = ExtResource("2_abrql")
+region = Rect2(32, 0, 32, 32)
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_bls4j"]
-atlas = ExtResource("1_abrql")
-region = Rect2(2, 2, 11, 14)
+atlas = ExtResource("2_abrql")
+region = Rect2(0, 0, 32, 32)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_fkugw"]
-atlas = ExtResource("1_abrql")
-region = Rect2(2, 18, 11, 14)
+atlas = ExtResource("2_abrql")
+region = Rect2(32, 0, 32, 32)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_8fjmc"]
-atlas = ExtResource("2_sglur")
-region = Rect2(2, 2, 14, 14)
+atlas = ExtResource("2_abrql")
+region = Rect2(0, 0, 32, 32)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_qiwj3"]
-atlas = ExtResource("2_sglur")
-region = Rect2(19, 2, 14, 14)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_26q78"]
-atlas = ExtResource("2_sglur")
-region = Rect2(35, 2, 14, 14)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_bectd"]
-atlas = ExtResource("2_sglur")
-region = Rect2(49, 2, 14, 14)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_wvtmh"]
-atlas = ExtResource("2_sglur")
-region = Rect2(2, 19, 14, 14)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_7thud"]
-atlas = ExtResource("2_sglur")
-region = Rect2(16, 19, 14, 14)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_a1qjk"]
-atlas = ExtResource("2_sglur")
-region = Rect2(30, 19, 14, 14)
-
-[sub_resource type="SpriteFrames" id="SpriteFrames_symyc"]
+[sub_resource type="SpriteFrames" id="SpriteFrames_qiwj3"]
 animations = [{
 "frames": [{
-"duration": 3.0,
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sglur")
+}],
+"loop": true,
+"name": &"fly",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
 "texture": SubResource("AtlasTexture_bls4j")
 }, {
-"duration": 3.0,
+"duration": 1.0,
 "texture": SubResource("AtlasTexture_fkugw")
 }],
 "loop": true,
@@ -58,24 +45,6 @@ animations = [{
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_8fjmc")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_qiwj3")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_26q78")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_bectd")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_wvtmh")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_7thud")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_a1qjk")
 }],
 "loop": true,
 "name": &"walk",
@@ -89,6 +58,5 @@ script = ExtResource("1_sglur")
 shape = SubResource("CapsuleShape2D_sfv1e")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
-sprite_frames = SubResource("SpriteFrames_symyc")
+sprite_frames = SubResource("SpriteFrames_qiwj3")
 animation = &"idle"
-frame_progress = 0.709239
