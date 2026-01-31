@@ -4,6 +4,8 @@
 [ext_resource type="Texture2D" uid="uid://hk7sap6425qc" path="res://assets/player/amphiptere_idle.png" id="2_abrql"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_sfv1e"]
+radius = 17.0
+height = 34.0
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_sglur"]
 atlas = ExtResource("2_abrql")
