@@ -1,7 +1,10 @@
-[gd_scene load_steps=2 format=3 uid="uid://cshridygo0sjg"]
+[gd_scene load_steps=3 format=3 uid="uid://cshridygo0sjg"]
 
 [ext_resource type="PackedScene" uid="uid://cataensx6dvtd" path="res://entities/player/player.tscn" id="1_k8tay"]
+[ext_resource type="PackedScene" uid="uid://dsn50dgtn0a14" path="res://scenes/game_scene/world/rain.tscn" id="2_oxjrw"]
 
 [node name="World" type="Node2D"]
 
 [node name="Player" parent="." instance=ExtResource("1_k8tay")]
+
+[node name="Rain" parent="." instance=ExtResource("2_oxjrw")]

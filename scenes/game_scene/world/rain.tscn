@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3 uid="uid://dsn50dgtn0a14"]
+
+[ext_resource type="Script" uid="uid://13biwd1s4ugg" path="res://scenes/game_scene/world/rain.gd" id="1_o3gtn"]
+[ext_resource type="PackedScene" uid="uid://bkaf4d567uac3" path="res://entities/raindrop/raindrop.tscn" id="2_8cg1y"]
+
+[node name="Rain" type="Node2D"]
+script = ExtResource("1_o3gtn")
+raindrop_scene = ExtResource("2_8cg1y")
+
+[node name="RainTimer" type="Timer" parent="."]
+autostart = true
+
+[connection signal="timeout" from="RainTimer" to="." method="_on_rain_timer_timeout"]

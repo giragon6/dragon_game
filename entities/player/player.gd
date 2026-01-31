@@ -3,10 +3,10 @@ extends CharacterBody2D
 @export var speed = 100
 @export var jump_strength = 1000
 @export var rotation_speed = 2.5
+@export var gravity : float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var rot := 0
 var screen_size : Vector2
 var rotation_direction = 0
-const GRAVITY := 50
 const TERM_VEL := 600
 
 func _ready():
@@ -22,7 +22,9 @@ func _physics_process(delta: float) -> void:
 		
 	if Input.is_action_just_pressed("up"):
 		velocity.y = -jump_strength
-	velocity.y += GRAVITY
+
+	if not is_on_floor():
+		velocity.y += gravity * delta
 
 	if velocity.length() > 0:
 		$AnimatedSprite2D.play("walk")
