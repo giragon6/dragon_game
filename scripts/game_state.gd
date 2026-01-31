@@ -5,10 +5,6 @@ const STATE_NAME : String = "GameState"
 const FILE_PATH = "res://scripts/game_state.gd"
 
 @export var level_states : Dictionary = {}
-
-@export var base_state : BaseState
-@export var wilds_state : WildsState
-
 @export var current_level_path : String
 @export var checkpoint_level_path : String
 @export var total_games_played : int

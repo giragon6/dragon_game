@@ -1,45 +1,32 @@
-extends Area2D
+extends CharacterBody2D
 
-@export var speed = Vector2(400,600)
-var flipped: bool = true
+@export var speed = 100
+@export var jump_strength = 1000
+@export var rotation_speed = 2.5
 var rot := 0
 var screen_size : Vector2
-const GRAVITY := 300
+var rotation_direction = 0
+const GRAVITY := 50
 const TERM_VEL := 600
 
 func _ready():
 	screen_size = get_viewport_rect().size
 
-func _process(delta: float) -> void:
-	var velocity = Vector2.ZERO 
-	if Input.is_action_pressed("right"):
-		velocity.x += speed.x
-		flipped = true
-	if Input.is_action_pressed("left"):
-		velocity.x -= speed.x
-		flipped = false
+func get_input():
+	rotation_direction = Input.get_axis("left", "right")
+	velocity = transform.x * speed
+
+func _physics_process(delta: float) -> void:
+	get_input()
+	rotation += rotation_direction * rotation_speed * delta	
 		
 	if Input.is_action_just_pressed("up"):
-		velocity.y = -10000
-		rot = 315
+		velocity.y = -jump_strength
+	velocity.y += GRAVITY
 
 	if velocity.length() > 0:
 		$AnimatedSprite2D.play("walk")
 	else:
-		# if grounded: $AnimatedSprite2D.play("idle")
-		# $AnimatedSprite2D.play("idle")
 		$AnimatedSprite2D.play("idle")
-	velocity.y += GRAVITY
-	rot += 1
-	if rot >= 360: rot = 0
-	if rot < 315 and rot > 45: rot = 45
-	$AnimatedSprite2D.rotation_degrees = rot
 	
-	if $AnimatedSprite2D.scale.x == 1 and flipped: 
-		$AnimatedSprite2D.scale.x = -1
-	elif $AnimatedSprite2D.scale.x == -1 and not flipped: 
-		$AnimatedSprite2D.scale.x = 1
-	position += velocity * delta
-	position = position.clamp(Vector2.ZERO, screen_size)
-
-	print($AnimatedSprite2D.rotation_degrees)
+	move_and_slide()

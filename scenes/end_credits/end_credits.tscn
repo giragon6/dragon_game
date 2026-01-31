@@ -9,6 +9,7 @@
 script = ExtResource("2_0sycx")
 main_menu_scene_path = ""
 force_mouse_mode_visible = false
+scroll_paused = true
 
 [node name="BackgroundMusicPlayer" parent="." index="0" instance=ExtResource("3_0sycx")]
 bus = &"Master"
@@ -32,6 +33,9 @@ grow_vertical = 2
 expand_mode = 1
 stretch_mode = 5
 
+[node name="ScrollContainer" parent="." index="3"]
+scroll_vertical = 1866
+
 [node name="CenterContainer" type="CenterContainer" parent="." index="4"]
 layout_mode = 0
 anchor_right = 1.0
@@ -42,7 +46,6 @@ mouse_filter = 2
 
 [node name="EndMessagePanel" type="Panel" parent="CenterContainer" index="0"]
 unique_name_in_owner = true
-visible = false
 custom_minimum_size = Vector2(360, 120)
 layout_mode = 2
 
