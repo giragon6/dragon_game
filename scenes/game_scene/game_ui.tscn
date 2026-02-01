@@ -860,9 +860,3 @@ grow_vertical = 2
 script = ExtResource("2_seekm")
 inventory_menu_packed = SubResource("PackedScene_vbgr5")
 focused_viewport = NodePath("../ViewportContainer/ConfigurableSubViewport")
-
-[node name="InventoryButton" type="Button" parent="."]
-layout_mode = 0
-offset_right = 63.0
-offset_bottom = 61.0
-text = "open inventory"

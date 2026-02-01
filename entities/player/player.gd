@@ -12,7 +12,11 @@ var raindrop_in : Raindrop = null
 const TERM_VEL := 600
 
 func _ready():
-	screen_size = get_viewport_rect().size
+	screen_size = get_parent().texture.get_size()
+	$Camera2D.limit_left = 0
+	$Camera2D.limit_top = 0
+	$Camera2D.limit_right = screen_size.x
+	$Camera2D.limit_bottom = screen_size.y
 
 
 func _physics_process(delta: float) -> void:
@@ -38,10 +42,10 @@ func _physics_process(delta: float) -> void:
 	raindrop_in = null
 	for i in get_slide_collision_count():
 		var collision = get_slide_collision(i)
-		print(collision)
 		var collider = collision.get_collider()
 		if collider is Raindrop:
 			raindrop_in = collider
 			# get sucked into the raindrop because of surface tension or something
 			position = raindrop_in.position
-			print(raindrop_in)
+	
+	position = position.clamp(Vector2.ZERO, screen_size)

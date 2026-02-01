@@ -4,7 +4,7 @@ extends Node2D
 var screen_size : Vector2
 
 func _ready():
-	screen_size = get_viewport_rect().size
+	screen_size = get_parent().texture.get_size()
 
 func _on_rain_timer_timeout() -> void:
 	var drop = raindrop_scene.instantiate()
