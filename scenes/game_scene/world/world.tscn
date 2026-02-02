@@ -2,15 +2,14 @@
 
 [ext_resource type="PackedScene" uid="uid://cataensx6dvtd" path="res://entities/player/player.tscn" id="1_k8tay"]
 [ext_resource type="PackedScene" uid="uid://dsn50dgtn0a14" path="res://scenes/game_scene/world/rain.tscn" id="2_oxjrw"]
-[ext_resource type="Script" uid="uid://cyh0d64pfygbl" path="res://addons/maaacks_game_template/base/nodes/utilities/pause_menu_controller.gd" id="2_xhe80"]
 [ext_resource type="Texture2D" uid="uid://cu6xw4g37mjcb" path="res://assets/world/beautifullandscape.png" id="3_ptotq"]
 [ext_resource type="PackedScene" uid="uid://c4bhq2f51ftk2" path="res://scenes/game_scene/world/water.tscn" id="4_jwiim"]
 [ext_resource type="PackedScene" uid="uid://dgtslvp173nhx" path="res://scenes/game_scene/game_ui.tscn" id="6_2maww"]
+[ext_resource type="PackedScene" uid="uid://e4twmltqbt8" path="res://scenes/game_scene/world/magma.tscn" id="6_7ih7l"]
 
 [node name="World" type="Sprite2D"]
 texture = ExtResource("3_ptotq")
 centered = false
-script = ExtResource("2_xhe80")
 
 [node name="Player" parent="." instance=ExtResource("1_k8tay")]
 
@@ -19,7 +18,7 @@ script = ExtResource("2_xhe80")
 [node name="Water" parent="." instance=ExtResource("4_jwiim")]
 position = Vector2(665.5, 1324.5)
 
-[node name="CanvasLayer" type="CanvasLayer" parent="."]
-
-[node name="GameUI" parent="CanvasLayer" instance=ExtResource("6_2maww")]
+[node name="GameUI" parent="." instance=ExtResource("6_2maww")]
 visible = false
+
+[node name="Magma" parent="." instance=ExtResource("6_7ih7l")]

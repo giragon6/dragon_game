@@ -1,0 +1,19 @@
+[gd_scene load_steps=4 format=3 uid="uid://c2flmvpehiuer"]
+
+[ext_resource type="Texture2D" uid="uid://cufyq4nd6pl3c" path="res://assets/magma/magma.png" id="1_62ygo"]
+[ext_resource type="Script" uid="uid://b8xn1vyn1s057" path="res://entities/falling_magma/falling_magma.gd" id="1_vpupw"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_vpupw"]
+size = Vector2(32, 32)
+
+[node name="FallingMagma" type="RigidBody2D"]
+collision_mask = 0
+script = ExtResource("1_vpupw")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("1_62ygo")
+
+[node name="ErosionTimer" type="Timer" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_vpupw")

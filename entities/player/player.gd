@@ -57,17 +57,23 @@ func _physics_process(delta: float) -> void:
 			raindrop_in = collider
 			# get sucked into the raindrop because of surface tension or something
 			position = raindrop_in.position
+		elif collider is Magma:
+			var world_pos = collision.get_position()
+			world_pos -= collision.get_normal() # offset
+			var local_pos = collider.to_local(world_pos)
+			var tile_coords = collider.local_to_map(local_pos)
+			if collider.get_cell_source_id(tile_coords) == 0: # magma
+				SignalBus.fall_tile.emit(tile_coords)
+			
 	position = position.clamp(Vector2.ZERO, screen_size)
-
+	
 func on_water_entered() -> void:
 	is_under_water = true
 	$DrownTimer.start(DROWN_TIME)
-	print('i am under the water')
 
 func on_water_exited() -> void:
 	is_under_water = false
 	$DrownTimer.stop()
-	print("i amn't under the water")
 	
 func on_drown() -> void:
 	pass

@@ -2,7 +2,7 @@ extends Node
 
 ## Node for opening a pause menu when detecting a 'ui_cancel' event.
 
-@export var pause_menu_packed : PackedScene = preload("res://scenes/windows/pause_menu.tscn")
+@export var pause_menu_packed : PackedScene
 @export var focused_viewport : Viewport
 
 var pause_menu : Node

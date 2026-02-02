@@ -1,0 +1,771 @@
+[gd_scene load_steps=21 format=3 uid="uid://dgtslvp173nhx"]
+
+[ext_resource type="PackedScene" uid="uid://dh1agiwftld6g" path="res://scenes/windows/pause_menu_layer.tscn" id="1_seekm"]
+[ext_resource type="PackedScene" uid="uid://cmay2p81tduat" path="res://scenes/loading_screen/level_loading_screen.tscn" id="9_i7m4m"]
+
+[sub_resource type="GDScript" id="GDScript_6mwjj"]
+script/source = "extends Node
+
+## Node for opening a pause menu when detecting a 'ui_cancel' event.
+
+@export var pause_menu_packed : PackedScene
+@export var focused_viewport : Viewport
+
+var pause_menu : Node
+
+func _unhandled_input(event : InputEvent) -> void:
+	if event.is_action_pressed(\"ui_cancel\"):
+		if pause_menu.visible: return
+		if not focused_viewport:
+			focused_viewport = get_viewport()
+		var _initial_focus_control = focused_viewport.gui_get_focus_owner()
+		pause_menu.show()
+		if pause_menu is CanvasLayer:
+			await pause_menu.visibility_changed
+		else:
+			await pause_menu.hidden
+		if is_inside_tree() and _initial_focus_control:
+			_initial_focus_control.grab_focus()
+
+func _ready() -> void:
+	pause_menu = pause_menu_packed.instantiate()
+	pause_menu.hide()
+	get_tree().current_scene.call_deferred(\"add_child\", pause_menu)
+"
+
+[sub_resource type="GDScript" id="GDScript_uplwd"]
+script/source = "@tool
+class_name LevelLoader
+extends Node
+## Loads scenes into a container.
+
+signal level_load_started
+signal level_loaded
+signal level_ready
+
+## Container where the level instance will be added.
+@export var level_container : Node
+## Optional reference to a loading screen in the scene.
+@export var level_loading_screen : LoadingScreen
+@export_group(\"Debugging\")
+@export var current_level : Node
+
+var is_loading : bool = false
+
+func _attach_level(level_resource : Resource):
+	assert(level_container != null, \"level_container is null\")
+	var instance = level_resource.instantiate()
+	level_container.call_deferred(\"add_child\", instance)
+	return instance
+
+func load_level(level_path : String):
+	if is_loading : return
+	if is_instance_valid(current_level):
+		current_level.queue_free()
+		await current_level.tree_exited
+		current_level = null
+	is_loading = true
+	SceneLoader.load_scene(level_path, true)
+	if level_loading_screen:
+		level_loading_screen.reset()
+	level_load_started.emit()
+	await SceneLoader.scene_loaded
+	is_loading = false
+	current_level = _attach_level(SceneLoader.get_resource())
+	if level_loading_screen:
+		level_loading_screen.close()
+	level_loaded.emit()
+	await current_level.ready
+	level_ready.emit()
+"
+
+[sub_resource type="GDScript" id="GDScript_jckqn"]
+script/source = "class_name LevelManager
+extends Node
+## Manage level changes in games.
+##
+## A helper script to assign to a node in a scene.
+## It works with a level loader and can open menus when players win or lose.
+## It can either be assigned a starting level path or a scene lister.
+## It can detect signals from levels to change levels in an open-world.
+## With a scene lister, it will instead traverse through levels linearly.
+
+## Required reference to a level loader in the scene.
+@export var level_loader : LevelLoader
+## Optional path to a starting level scene.
+## Required if there is no scene lister.
+@export_file var starting_level_path : String
+## Optional reference to a scene lister in the scene.
+## Required if there is no starting level path.
+@export var scene_lister : SceneLister
+## Whether to load the starting level when ready.
+@export var auto_load : bool = true
+@export_group(\"Scenes\")
+## Path to a main menu scene.
+@export_file(\"*.tscn\") var main_menu_scene_path : String
+## Optional path to an ending scene.
+@export_file(\"*.tscn\") var ending_scene_path : String
+## Optional screen to be shown after the game is won.
+@export var game_won_scene : PackedScene
+## Optional screen to be shown after the level is lost.
+@export var level_lost_scene : PackedScene
+## Optional screen to be shown after the level is won.
+@export var level_won_scene : PackedScene
+
+## Reference to the current level node.
+var current_level : Node
+var current_level_path : String : set = set_current_level_path
+var checkpoint_level_path : String : set = set_checkpoint_level_path
+
+func set_current_level_path(value : String) -> void:
+	current_level_path = value
+
+func set_checkpoint_level_path(value : String) -> void:
+	checkpoint_level_path = value
+
+func _try_connecting_signal_to_node(node : Node, signal_name : String, callable : Callable) -> void:
+	if node.has_signal(signal_name) and not node.is_connected(signal_name, callable):
+		node.connect(signal_name, callable)
+
+func _try_connecting_signal_to_level(signal_name : String, callable : Callable) -> void:
+	_try_connecting_signal_to_node(current_level, signal_name, callable)
+
+func get_main_menu_scene_path() -> String:
+	return main_menu_scene_path
+
+func _load_main_menu() -> void:
+	SceneLoader.load_scene(get_main_menu_scene_path())
+
+func _find_in_scene_lister(level_path : String) -> int:
+	if not scene_lister: return -1
+	level_path = ResourceUID.ensure_path(level_path)
+	return scene_lister.files.find(level_path)
+
+func is_on_last_level() -> bool:
+	var current_level_id = _find_in_scene_lister(current_level_path)
+	return current_level_id > -1 and current_level_id == scene_lister.files.size() - 1
+
+func get_relative_level_path(offset : int = 1) -> String:
+	var current_level_id := _find_in_scene_lister(current_level_path)
+	if current_level_id > -1:
+		if current_level_id >= max(0, -(offset)) and current_level_id < scene_lister.files.size() - max(0, offset):
+			current_level_id += offset
+			return scene_lister.files[current_level_id]
+	return \"\"
+
+func get_next_level_path() -> String:
+	return get_relative_level_path(1)
+
+func get_prev_level_path() -> String:
+	return get_relative_level_path(-1)
+
+func get_ending_scene_path() -> String:
+	return ending_scene_path
+
+func _load_ending() -> void:
+	if not get_ending_scene_path().is_empty():
+		SceneLoader.load_scene(get_ending_scene_path())
+	else:
+		_load_main_menu()
+
+func _on_level_lost() -> void:
+	if level_lost_scene:
+		var instance = level_lost_scene.instantiate()
+		get_tree().current_scene.add_child(instance)
+		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
+		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
+	else:
+		_reload_level()
+
+func get_checkpoint_level_path() -> String:
+	if checkpoint_level_path.is_empty():
+		if scene_lister:
+			return scene_lister.files.front()
+		if not starting_level_path.is_empty():
+			return starting_level_path
+	return checkpoint_level_path
+
+func load_level(level_path : String) -> void:
+	current_level_path = level_path
+	level_loader.load_level(level_path)
+
+func _load_checkpoint_level() -> void:
+	load_level(get_checkpoint_level_path())
+
+func _reload_level() -> void:
+	load_level(current_level_path)
+
+func _load_win_screen_or_ending() -> void:
+	if game_won_scene:
+		var instance = game_won_scene.instantiate()
+		get_tree().current_scene.add_child(instance)
+		_try_connecting_signal_to_node(instance, &\"continue_pressed\", _load_ending)
+		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
+		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
+	else:
+		_load_ending()
+
+func _load_level_won_screen_or_checkpoint() -> void:
+	if level_won_scene:
+		var instance = level_won_scene.instantiate()
+		get_tree().current_scene.add_child(instance)
+		_try_connecting_signal_to_node(instance, &\"continue_pressed\", _load_checkpoint_level)
+		_try_connecting_signal_to_node(instance, &\"restart_pressed\", _reload_level)
+		_try_connecting_signal_to_node(instance, &\"main_menu_pressed\", _load_main_menu)
+	else:
+		_load_checkpoint_level()
+
+func _on_level_won(next_level_path : String = \"\"):
+	if next_level_path.is_empty():
+		next_level_path = get_next_level_path()
+	if next_level_path.is_empty():
+		_load_win_screen_or_ending()
+	else:
+		checkpoint_level_path = next_level_path
+		_load_level_won_screen_or_checkpoint()
+
+func _on_level_changed(next_level_path : String):
+	checkpoint_level_path = next_level_path
+	_load_checkpoint_level()
+
+func _connect_level_signals() -> void:
+	_try_connecting_signal_to_level(&\"level_lost\", _on_level_lost)
+	_try_connecting_signal_to_level(&\"level_won\", _on_level_won)
+	_try_connecting_signal_to_level(&\"level_changed\", _on_level_changed)
+
+func _on_level_loader_level_loaded() -> void:
+	current_level = level_loader.current_level
+	await current_level.ready
+	_connect_level_signals()
+
+func _on_level_loader_level_load_started() -> void:
+	pass
+
+func _on_level_loader_level_ready() -> void:
+	pass
+
+func _auto_load() -> void:
+	if auto_load:
+		_load_checkpoint_level()
+
+func _ready() -> void:
+	if Engine.is_editor_hint(): return
+	level_loader.level_loaded.connect(_on_level_loader_level_loaded)
+	level_loader.level_ready.connect(_on_level_loader_level_ready)
+	level_loader.level_load_started.connect(_on_level_loader_level_load_started)
+	_auto_load()
+"
+
+[sub_resource type="GDScript" id="GDScript_ejf1p"]
+script/source = "@tool
+class_name WindowContainer
+extends PanelContainer
+
+signal closed
+signal opened
+
+@export var ui_cancel_closes : bool = true
+
+@export_group(\"Content\")
+@export var update_content : bool = false
+@export_multiline var text : String :
+	set(value):
+		text = value
+		if update_content and is_inside_tree():
+			description_label.text = text
+
+@export var close_button_text : String = \"Close\" :
+	set(value):
+		close_button_text = value
+		if update_content and is_inside_tree():
+			close_button.text = close_button_text
+
+@export_subgroup(\"Title\")
+@export var title : String = \"Menu\" :
+	set(value):
+		title = value
+		if update_content and is_inside_tree():
+			title_label.text = title
+
+@export_range(0, 1000, 1) var title_font_size : int = 16 :
+	set(value):
+		title_font_size = value
+		if update_content and is_inside_tree():
+			title_label.set(\"theme_override_font_sizes/font_size\", title_font_size)
+
+@export var title_visible : bool = true :
+	set(value):
+		title_visible = value
+		if update_content and is_inside_tree():
+			title_margin.visible = title_visible
+
+@onready var content_container : Container = %ContentContainer
+@onready var title_label : Label = %TitleLabel
+@onready var title_margin : MarginContainer = %TitleMargin
+@onready var description_label : RichTextLabel = %DescriptionLabel
+@onready var close_button : Button = %CloseButton
+@onready var menu_buttons : BoxContainer = %MenuButtons
+
+func _ready() -> void:
+	update_content = update_content
+	text = text
+	close_button_text = close_button_text
+	title = title
+	title_font_size = title_font_size
+	title_visible = title_visible
+
+func close() -> void:
+	if not visible: return
+	hide()
+	closed.emit()
+
+func _handle_cancel_input() -> void:
+	close()
+
+func _unhandled_input(event : InputEvent) -> void:
+	if visible and event.is_action_released(\"ui_cancel\") and ui_cancel_closes:
+		_handle_cancel_input()
+		get_viewport().set_input_as_handled()
+
+func _on_close_button_pressed() -> void:
+	close()
+
+func show() -> void:
+	super.show()
+	opened.emit()
+
+func _exit_tree():
+	if Engine.is_editor_hint(): return
+	close()
+"
+
+[sub_resource type="GDScript" id="GDScript_dnslt"]
+script/source = "extends Control
+## Node that captures UI focus when switching menus.
+##
+## This script assists with capturing UI focus when
+## opening, closing, or switching between menus.
+## When attached to a node, it will check if it was changed to visible
+## and if it should grab focus. If both are true, it will capture focus
+## on the first eligible node in its scene tree.
+
+## Hierarchical depth to search in the scene tree for a focusable control node.
+@export var search_depth : int = 1
+## If true, always capture focus when made visible.
+@export var enabled : bool = false
+## If true, capture focus if nothing currently is in focus.
+@export var null_focus_enabled : bool = true
+## If true, capture focus if there is a joypad detected.
+@export var joypad_enabled : bool = true
+## If true, capture focus if the mouse is hidden.
+@export var mouse_hidden_enabled : bool = true
+
+## Locks focus
+@export var lock : bool = false :
+	set(value):
+		var value_changed : bool = lock != value
+		lock = value
+		if value_changed and not lock:
+			update_focus()
+
+func _focus_first_search(control_node : Control, levels : int = 1) -> bool:
+	if control_node == null or !control_node.is_visible_in_tree():
+		return false
+	if control_node.focus_mode == FOCUS_ALL:
+		control_node.grab_focus()
+		if control_node is ItemList:
+			control_node.select(0)
+		return true
+	if levels < 1:
+		return false
+	var children = control_node.get_children()
+	for child in children:
+		if _focus_first_search(child, levels - 1):
+			return true
+	return false
+
+func focus_first() -> void:
+	_focus_first_search(self, search_depth)
+
+func update_focus() -> void:
+	if lock : return
+	if _is_visible_and_should_capture():
+		focus_first()
+
+func _should_capture_focus() -> bool:
+	return enabled or \\
+	(get_viewport().gui_get_focus_owner() == null and null_focus_enabled) or \\
+	(Input.get_connected_joypads().size() > 0 and joypad_enabled) or \\
+	(Input.mouse_mode not in [Input.MOUSE_MODE_VISIBLE, Input.MOUSE_MODE_CONFINED] and mouse_hidden_enabled)
+
+func _is_visible_and_should_capture() -> bool:
+	return is_visible_in_tree() and _should_capture_focus()
+
+func _on_visibility_changed() -> void:
+	call_deferred(\"update_focus\")
+
+func _ready() -> void:
+	if is_inside_tree():
+		update_focus()
+		connect(\"visibility_changed\", _on_visibility_changed)
+"
+
+[sub_resource type="PackedScene" id="PackedScene_v20na"]
+_bundled = {
+"conn_count": 1,
+"conns": PackedInt32Array(1073741836, 1073741835, 85, 84, 2, 0, 0),
+"editable_instances": [],
+"names": PackedStringArray("WindowContainer", "PanelContainer", "process_mode", "anchors_preset", "anchor_left", "anchor_top", "anchor_right", "anchor_bottom", "offset_left", "offset_top", "offset_right", "offset_bottom", "grow_horizontal", "grow_vertical", "size_flags_horizontal", "size_flags_vertical", "script", "ContentContainer", "MarginContainer", "unique_name_in_owner", "layout_mode", "theme_override_constants/margin_left", "theme_override_constants/margin_top", "theme_override_constants/margin_right", "theme_override_constants/margin_bottom", "BoxContainer", "BoxContainer", "layout_mode", "vertical", "TitleMargin", "MarginContainer", "unique_name_in_owner", "layout_mode", "theme_override_constants/margin_left", "theme_override_constants/margin_top", "theme_override_constants/margin_right", "theme_override_constants/margin_bottom", "BoxContainer", "BoxContainer", "layout_mode", "theme_override_constants/separation", "vertical", "TitleLabel", "Label", "unique_name_in_owner", "layout_mode", "theme_override_font_sizes/font_size", "text", "horizontal_alignment", "HSeparator", "HSeparator", "layout_mode", "BodyMargin", "MarginContainer", "unique_name_in_owner", "layout_mode", "size_flags_vertical", "DescriptionLabel", "RichTextLabel", "unique_name_in_owner", "layout_mode", "bbcode_enabled", "fit_content", "horizontal_alignment", "vertical_alignment", "MenuButtonsMargin", "MarginContainer", "layout_mode", "theme_override_constants/margin_top", "MenuButtons", "BoxContainer", "unique_name_in_owner", "custom_minimum_size", "layout_mode", "size_flags_vertical", "theme_override_constants/separation", "alignment", "vertical", "script", "CloseButton", "Button", "unique_name_in_owner", "layout_mode", "text", "_on_close_button_pressed", "pressed"),
+"node_count": 12,
+"node_paths": [NodePath("."), NodePath("./ContentContainer"), NodePath("./ContentContainer/BoxContainer"), NodePath("./ContentContainer/BoxContainer/TitleMargin"), NodePath("./ContentContainer/BoxContainer/TitleMargin/BoxContainer"), NodePath("./ContentContainer/BoxContainer/TitleMargin/BoxContainer"), NodePath("./ContentContainer/BoxContainer"), NodePath("./ContentContainer/BoxContainer/BodyMargin"), NodePath("./ContentContainer/BoxContainer"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/CloseButton")],
+"nodes": PackedInt32Array(-1, -1, 1, 0, -1, 15, 2, 0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 8, 6, 9, 7, 10, 8, 11, 9, 12, 10, 13, 11, 14, 12, 15, 13, 16, 14, 0, 1073741824, 0, 18, 17, -1, 6, 19, 15, 20, 16, 21, 17, 22, 18, 23, 19, 24, 20, 0, 1073741825, 0, 26, 25, -1, 2, 27, 21, 28, 22, 0, 1073741826, 0, 30, 29, -1, 6, 31, 23, 32, 24, 33, 25, 34, 26, 35, 27, 36, 28, 0, 1073741827, 0, 38, 37, -1, 3, 39, 29, 40, 30, 41, 31, 0, 1073741828, 0, 43, 42, -1, 5, 44, 32, 45, 33, 46, 34, 47, 35, 48, 36, 0, 1073741829, 0, 50, 49, -1, 1, 51, 37, 0, 1073741830, 0, 53, 52, -1, 3, 54, 38, 55, 39, 56, 40, 0, 1073741831, 0, 58, 57, -1, 6, 59, 41, 60, 42, 61, 43, 62, 44, 63, 45, 64, 46, 0, 1073741832, 0, 66, 65, -1, 2, 67, 47, 68, 48, 0, 1073741833, 0, 70, 69, -1, 8, 71, 49, 72, 50, 73, 51, 74, 52, 75, 53, 76, 54, 77, 55, 78, 56, 0, 1073741834, 0, 80, 79, -1, 3, 81, 57, 82, 58, 83, 59, 0),
+"variants": [3, 8, 0.5, 0.5, 0.5, 0.5, -80.0, -50.0, 80.0, 50.0, 2, 2, 4, 4, SubResource("GDScript_ejf1p"), true, 2, 16, 16, 16, 16, 2, true, true, 2, -14, -14, -14, 8, 2, 0, true, true, 2, 16, "Menu", 1, 2, true, 2, 3, true, 2, true, true, 1, 1, 2, 8, true, Vector2(128, 0), 2, 3, 16, 1, true, SubResource("GDScript_dnslt"), true, 2, "Close"],
+"version": 3
+}
+
+[sub_resource type="GDScript" id="GDScript_y85d6"]
+script/source = "@tool
+class_name OverlaidWindow
+extends WindowContainer
+
+@export var pauses_game : bool = false :
+	set(value):
+		pauses_game = value
+		if pauses_game:
+			process_mode = PROCESS_MODE_ALWAYS
+		else:
+			process_mode = PROCESS_MODE_INHERIT
+@export var makes_mouse_visible : bool = true
+@export var exclusive : bool = true
+@export var exclusive_background_color : Color
+
+var _initial_pause_state : bool = false
+var _initial_focus_mode : FocusMode = FOCUS_ALL
+var _initial_mouse_mode : Input.MouseMode
+var _initial_focus_control
+var _scene_tree : SceneTree 
+var _exclusive_control_node : ColorRect
+
+func close() -> void:
+	if not visible: return
+	_scene_tree.paused = _initial_pause_state
+	Input.set_mouse_mode(_initial_mouse_mode)
+	if is_instance_valid(_initial_focus_control) and _initial_focus_control.is_inside_tree():
+		_initial_focus_control.focus_mode = _initial_focus_mode
+		_initial_focus_control.grab_focus()
+	if _exclusive_control_node:
+		_exclusive_control_node.queue_free()
+	super.close()
+
+func _overlaid_window_setup():
+	if _scene_tree:
+		_initial_pause_state = _scene_tree.paused
+	_initial_mouse_mode = Input.get_mouse_mode()
+	_initial_focus_control = get_viewport().gui_get_focus_owner()
+	if _initial_focus_control:
+		_initial_focus_mode = _initial_focus_control.focus_mode
+		_initial_focus_control.release_focus()
+	if Engine.is_editor_hint(): return
+	_scene_tree.paused = pauses_game or _initial_pause_state
+	if makes_mouse_visible:
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	if exclusive:
+		_exclusive_control_node = ColorRect.new()
+		_exclusive_control_node.name = self.name + \"ExclusiveControl\"
+		_exclusive_control_node.color = exclusive_background_color
+		_exclusive_control_node.set_anchors_preset(PRESET_FULL_RECT)
+		add_sibling.call_deferred(_exclusive_control_node)
+		await _exclusive_control_node.draw
+		get_parent().move_child(_exclusive_control_node, get_index())
+
+func _on_visibility_changed() -> void:
+	if is_visible_in_tree():
+		_overlaid_window_setup()
+
+func _enter_tree() -> void:
+	_scene_tree = get_tree()
+	if not visibility_changed.is_connected(_on_visibility_changed):
+		visibility_changed.connect(_on_visibility_changed)
+	_on_visibility_changed()
+"
+
+[sub_resource type="PackedScene" id="PackedScene_ul61k"]
+_bundled = {
+"base_scene": 0,
+"conn_count": 0,
+"conns": PackedInt32Array(),
+"editable_instances": [],
+"names": PackedStringArray("OverlaidWindow", "process_mode", "script", "pauses_game", "makes_mouse_visible", "exclusive", "exclusive_background_color"),
+"node_count": 1,
+"node_paths": [],
+"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 0),
+"variants": [SubResource("PackedScene_v20na"), 0, SubResource("GDScript_y85d6"), false, true, true, Color(0, 0, 0, 0.5)],
+"version": 3
+}
+
+[sub_resource type="GDScript" id="GDScript_48t47"]
+script/source = "@tool
+extends OverlaidWindow
+
+signal continue_pressed
+signal main_menu_pressed
+
+func _ready():
+	if OS.has_feature(\"web\"):
+		%ExitButton.hide()
+
+func _on_exit_button_pressed():
+	%ExitConfirmation.show()
+
+func _on_main_menu_button_pressed():
+	%MainMenuConfirmation.show()
+
+func _on_close_button_pressed():
+	continue_pressed.emit()
+	close()
+
+func _on_main_menu_confirmation_confirmed():
+	main_menu_pressed.emit()
+	close()
+
+func _on_exit_confirmation_confirmed():
+	get_tree().quit()
+"
+
+[sub_resource type="GDScript" id="GDScript_rkfhe"]
+script/source = "@tool
+class_name ConfirmationOverlaidWindow
+extends OverlaidWindow
+
+signal confirmed
+
+@onready var confirm_button : Button = %ConfirmButton
+
+@export var confirm_button_text : String = \"Confirm\" :
+	set(value):
+		confirm_button_text = value
+		if update_content and is_inside_tree():
+			confirm_button.text = confirm_button_text
+
+func confirm():
+	confirmed.emit()
+	close()
+
+func _on_confirm_button_pressed():
+	confirm()
+"
+
+[sub_resource type="PackedScene" id="PackedScene_g2ndc"]
+_bundled = {
+"base_scene": 0,
+"conn_count": 1,
+"conns": PackedInt32Array(1073741828, 1073741827, 15, 14, 2, 0, 0),
+"editable_instances": [],
+"names": PackedStringArray("ConfirmationOverlaidWindow", "script", "confirm_button_text", "update_content", "close_button_text", "MenuButtons", "vertical", "CloseButton", "text", "ConfirmButton", "Button", "unique_name_in_owner", "layout_mode", "text", "_on_confirm_button_pressed", "pressed"),
+"node_count": 4,
+"node_paths": [NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/ConfirmButton")],
+"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 4, 1, 1, 2, 2, 3, 3, 4, 4, 0, 1073741824, -1, 2147483647, 262149, -1, 1, 6, 5, 0, 1073741825, -1, 2147483647, 262151, -1, 1, 8, 6, 0, 1073741826, 0, 10, 524297, -1, 3, 11, 7, 12, 8, 13, 9, 0),
+"variants": [SubResource("PackedScene_ul61k"), SubResource("GDScript_rkfhe"), "Confirm", true, "Cancel", false, "Cancel", true, 2, "Confirm"],
+"version": 3
+}
+
+[sub_resource type="PackedScene" id="PackedScene_tdoof"]
+_bundled = {
+"base_scene": 0,
+"conn_count": 4,
+"conns": PackedInt32Array(1073741833, 1073741832, 44, 43, 2, 0, 0, 1073741835, 1073741834, 46, 45, 2, 0, 0, 1073741837, 1073741836, 48, 47, 2, 0, 0, 1073741839, 1073741838, 50, 49, 2, 0, 0),
+"editable_instances": [],
+"names": PackedStringArray("GameWonWindow", "custom_minimum_size", "script", "update_content", "text", "close_button_text", "title_visible", "TitleMargin", "visible", "DescriptionLabel", "text", "MenuButtons", "vertical", "ExitButton", "Button", "unique_name_in_owner", "visible", "layout_mode", "size_flags_horizontal", "text", "MainMenuButton", "Button", "unique_name_in_owner", "visible", "layout_mode", "size_flags_horizontal", "text", "CloseButton", "size_flags_horizontal", "text", "MainMenuConfirmation", "unique_name_in_owner", "visible", "custom_minimum_size", "layout_mode", "text", "title", "ExitConfirmation", "unique_name_in_owner", "visible", "layout_mode", "text", "title", "_on_exit_button_pressed", "pressed", "_on_main_menu_button_pressed", "pressed", "_on_main_menu_confirmation_confirmed", "confirmed", "_on_exit_confirmation_confirmed", "confirmed"),
+"node_count": 9,
+"node_paths": [NodePath("./ContentContainer/BoxContainer"), NodePath("./ContentContainer/BoxContainer/BodyMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("."), NodePath("."), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/ExitButton"), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/MainMenuButton"), NodePath("."), NodePath("MainMenuConfirmation"), NodePath("."), NodePath("ExitConfirmation")],
+"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 0, 1073741824, -1, 2147483647, 262151, -1, 1, 8, 7, 0, 1073741825, -1, 2147483647, 262153, -1, 1, 10, 8, 0, 1073741826, -1, 2147483647, 262155, -1, 1, 12, 9, 0, 1073741827, 0, 14, 262157, -1, 5, 15, 10, 16, 11, 17, 12, 18, 13, 19, 14, 0, 1073741828, 0, 21, 524308, -1, 5, 22, 15, 23, 16, 24, 17, 25, 18, 26, 19, 0, 1073741829, -1, 2147483647, 786459, -1, 2, 28, 20, 29, 21, 0, 1073741830, 0, 2147483647, 524318, 22, 6, 31, 23, 32, 24, 33, 25, 34, 26, 35, 27, 36, 28, 0, 1073741831, 0, 2147483647, 786469, 29, 5, 38, 30, 39, 31, 40, 32, 41, 33, 42, 34, 0),
+"variants": [SubResource("PackedScene_ul61k"), Vector2(432, 240), SubResource("GDScript_48t47"), true, "You won!", "Continue", false, false, "You won!", false, true, false, 2, 3, "Exit", true, false, 2, 3, "Main Menu", 3, "Continue", SubResource("PackedScene_g2ndc"), true, false, Vector2(220, 0), 2, "Exit to the main menu?", "Confirm Exit", SubResource("PackedScene_g2ndc"), true, false, 2, "Exit the game?", "Confirm Exit"],
+"version": 3
+}
+
+[sub_resource type="GDScript" id="GDScript_osgb6"]
+script/source = "@tool
+extends OverlaidWindow
+
+signal restart_pressed
+signal main_menu_pressed
+
+func _ready():
+	if OS.has_feature(\"web\"):
+		%ExitButton.hide()
+
+func _on_exit_button_pressed():
+	%ExitConfirmation.show()
+
+func _on_main_menu_button_pressed():
+	%MainMenuConfirmation.show()
+
+func _on_close_button_pressed():
+	restart_pressed.emit()
+	close()
+
+func _on_main_menu_confirmation_confirmed():
+	main_menu_pressed.emit()
+	close()
+
+func _on_exit_confirmation_confirmed():
+	get_tree().quit()
+"
+
+[sub_resource type="PackedScene" id="PackedScene_p6niw"]
+_bundled = {
+"base_scene": 0,
+"conn_count": 4,
+"conns": PackedInt32Array(1073741833, 1073741832, 42, 41, 2, 0, 0, 1073741835, 1073741834, 44, 43, 2, 0, 0, 1073741837, 1073741836, 46, 45, 2, 0, 0, 1073741839, 1073741838, 48, 47, 2, 0, 0),
+"editable_instances": [],
+"names": PackedStringArray("LevelLostWindow", "custom_minimum_size", "script", "update_content", "text", "close_button_text", "title_visible", "TitleMargin", "visible", "DescriptionLabel", "text", "MenuButtons", "vertical", "ExitButton", "Button", "unique_name_in_owner", "layout_mode", "size_flags_horizontal", "text", "MainMenuButton", "Button", "unique_name_in_owner", "layout_mode", "size_flags_horizontal", "text", "CloseButton", "size_flags_horizontal", "text", "MainMenuConfirmation", "unique_name_in_owner", "visible", "custom_minimum_size", "layout_mode", "text", "title", "ExitConfirmation", "unique_name_in_owner", "visible", "layout_mode", "text", "title", "_on_exit_button_pressed", "pressed", "_on_main_menu_button_pressed", "pressed", "_on_main_menu_confirmation_confirmed", "confirmed", "_on_exit_confirmation_confirmed", "confirmed"),
+"node_count": 9,
+"node_paths": [NodePath("./ContentContainer/BoxContainer"), NodePath("./ContentContainer/BoxContainer/BodyMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("."), NodePath("."), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/ExitButton"), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/MainMenuButton"), NodePath("."), NodePath("MainMenuConfirmation"), NodePath("."), NodePath("ExitConfirmation")],
+"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 0, 1073741824, -1, 2147483647, 262151, -1, 1, 8, 7, 0, 1073741825, -1, 2147483647, 262153, -1, 1, 10, 8, 0, 1073741826, -1, 2147483647, 262155, -1, 1, 12, 9, 0, 1073741827, 0, 14, 262157, -1, 4, 15, 10, 16, 11, 17, 12, 18, 13, 0, 1073741828, 0, 20, 524307, -1, 4, 21, 14, 22, 15, 23, 16, 24, 17, 0, 1073741829, -1, 2147483647, 786457, -1, 2, 26, 18, 27, 19, 0, 1073741830, 0, 2147483647, 524316, 20, 6, 29, 21, 30, 22, 31, 23, 32, 24, 33, 25, 34, 26, 0, 1073741831, 0, 2147483647, 786467, 27, 5, 36, 28, 37, 29, 38, 30, 39, 31, 40, 32, 0),
+"variants": [SubResource("PackedScene_ul61k"), Vector2(432, 240), SubResource("GDScript_osgb6"), true, "You lost...", "Restart", false, false, "You lost...", false, true, 2, 3, "Exit", true, 2, 3, "Main Menu", 3, "Restart", SubResource("PackedScene_g2ndc"), true, false, Vector2(220, 0), 2, "Exit to the main menu?", "Confirm Exit", SubResource("PackedScene_g2ndc"), true, false, 2, "Exit the game?", "Confirm Exit"],
+"version": 3
+}
+
+[sub_resource type="GDScript" id="GDScript_l8488"]
+script/source = "@tool
+extends OverlaidWindow
+
+signal continue_pressed
+signal main_menu_pressed
+signal restart_pressed
+
+func _ready():
+	if OS.has_feature(\"web\"):
+		%ExitButton.hide()
+
+func _on_exit_button_pressed():
+	%ExitConfirmation.show()
+
+func _on_main_menu_button_pressed():
+	%MainMenuConfirmation.show()
+
+func _on_close_button_pressed():
+	continue_pressed.emit()
+	close()
+
+func _on_main_menu_confirmation_confirmed():
+	main_menu_pressed.emit()
+	close()
+
+func _on_restart_button_pressed():
+	restart_pressed.emit()
+	close()
+
+func _on_exit_confirmation_confirmed():
+	get_tree().quit()
+"
+
+[sub_resource type="PackedScene" id="PackedScene_mmfc5"]
+_bundled = {
+"base_scene": 0,
+"conn_count": 5,
+"conns": PackedInt32Array(1073741834, 1073741833, 49, 48, 2, 0, 0, 1073741836, 1073741835, 51, 50, 2, 0, 0, 1073741838, 1073741837, 53, 52, 2, 0, 0, 1073741840, 1073741839, 55, 54, 2, 0, 0, 1073741842, 1073741841, 57, 56, 2, 0, 0),
+"editable_instances": [],
+"names": PackedStringArray("LevelWonWindow", "custom_minimum_size", "script", "update_content", "text", "close_button_text", "title_visible", "TitleMargin", "visible", "DescriptionLabel", "text", "MenuButtons", "vertical", "ExitButton", "Button", "unique_name_in_owner", "visible", "layout_mode", "size_flags_horizontal", "text", "MainMenuButton", "Button", "unique_name_in_owner", "layout_mode", "size_flags_horizontal", "text", "RestartButton", "Button", "unique_name_in_owner", "layout_mode", "size_flags_horizontal", "text", "CloseButton", "size_flags_horizontal", "text", "MainMenuConfirmation", "unique_name_in_owner", "visible", "custom_minimum_size", "layout_mode", "text", "title", "ExitConfirmation", "unique_name_in_owner", "visible", "layout_mode", "text", "title", "_on_exit_button_pressed", "pressed", "_on_main_menu_button_pressed", "pressed", "_on_restart_button_pressed", "pressed", "_on_main_menu_confirmation_confirmed", "confirmed", "_on_exit_confirmation_confirmed", "confirmed"),
+"node_count": 10,
+"node_paths": [NodePath("./ContentContainer/BoxContainer"), NodePath("./ContentContainer/BoxContainer/BodyMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("./ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"), NodePath("."), NodePath("."), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/ExitButton"), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/MainMenuButton"), NodePath("."), NodePath("ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons/RestartButton"), NodePath("."), NodePath("MainMenuConfirmation"), NodePath("."), NodePath("ExitConfirmation")],
+"nodes": PackedInt32Array(-1, -1, 2147483647, 0, -1, 6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 0, 1073741824, -1, 2147483647, 262151, -1, 1, 8, 7, 0, 1073741825, -1, 2147483647, 262153, -1, 1, 10, 8, 0, 1073741826, -1, 2147483647, 262155, -1, 1, 12, 9, 0, 1073741827, 0, 14, 262157, -1, 5, 15, 10, 16, 11, 17, 12, 18, 13, 19, 14, 0, 1073741828, 0, 21, 524308, -1, 4, 22, 15, 23, 16, 24, 17, 25, 18, 0, 1073741829, 0, 27, 786458, -1, 4, 28, 19, 29, 20, 30, 21, 31, 22, 0, 1073741830, -1, 2147483647, 1048608, -1, 2, 33, 23, 34, 24, 0, 1073741831, 0, 2147483647, 524323, 25, 6, 36, 26, 37, 27, 38, 28, 39, 29, 40, 30, 41, 31, 0, 1073741832, 0, 2147483647, 786474, 32, 5, 43, 33, 44, 34, 45, 35, 46, 36, 47, 37, 0),
+"variants": [SubResource("PackedScene_ul61k"), Vector2(432, 240), SubResource("GDScript_l8488"), true, "Level complete!", "Continue", false, false, "Level complete!", false, true, false, 2, 3, "Exit", true, 2, 3, "Main Menu", true, 2, 3, "Restart", 3, "Continue", SubResource("PackedScene_g2ndc"), true, false, Vector2(220, 0), 2, "Exit to the main menu?", "Confirm Exit", SubResource("PackedScene_g2ndc"), true, false, 2, "Exit the game?", "Confirm Exit"],
+"version": 3
+}
+
+[sub_resource type="GDScript" id="GDScript_jdgdv"]
+script/source = "@tool
+extends Node
+class_name SceneLister
+## Helper class for listing all the scenes in a directory.
+
+## List of paths to scene files.
+## Prefilled in the editor by selecting a directory.
+@export var files : Array[String]
+## Prefill files with any scenes in the directory.
+@export_dir var directory : String :
+	set(value):
+		directory = value
+		_refresh_files()
+
+func _refresh_files():
+	if not is_inside_tree() or directory.is_empty(): return
+	var dir_access = DirAccess.open(directory)
+	if dir_access:
+		files.clear()
+		for file in dir_access.get_files():
+			if not file.ends_with(\".tscn\"):
+				continue
+			files.append(directory + \"/\" + file)
+"
+
+[sub_resource type="GDScript" id="GDScript_ud2if"]
+script/source = "extends SubViewport
+## Script to apply the anti-aliasing setting from [PlayerConfig] to a [SubViewport].
+
+## The name of the anti-aliasing variable in the [ConfigFile].
+@export var anti_aliasing_key : StringName = \"Anti-aliasing\"
+## The name of the section of the anti-aliasing variable in the [ConfigFile].
+@export var video_section : StringName = AppSettings.VIDEO_SECTION
+
+func _ready() -> void:
+	var anti_aliasing : int = PlayerConfig.get_config(video_section, anti_aliasing_key, Viewport.MSAA_DISABLED)
+	msaa_2d = anti_aliasing as MSAA
+	msaa_3d = anti_aliasing as MSAA
+"
+
+[node name="GameUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="PauseMenuController" type="Node" parent="."]
+script = SubResource("GDScript_6mwjj")
+pause_menu_packed = ExtResource("1_seekm")
+
+[node name="LevelLoader" type="Node" parent="." node_paths=PackedStringArray("level_container", "level_loading_screen")]
+script = SubResource("GDScript_uplwd")
+level_container = NodePath("../ViewportContainer/ConfigurableSubViewport")
+level_loading_screen = NodePath("../LevelLoadingScreen")
+
+[node name="LevelManager" type="Node" parent="." node_paths=PackedStringArray("level_loader", "scene_lister")]
+script = SubResource("GDScript_jckqn")
+starting_level_path = "res://scenes/game_scene/levels/level_1.tscn"
+main_menu_scene_path = "res://scenes/menus/main_menu/main_menu_with_animations.tscn"
+ending_scene_path = "res://scenes/end_credits/end_credits.tscn"
+game_won_scene = SubResource("PackedScene_tdoof")
+level_lost_scene = SubResource("PackedScene_p6niw")
+level_won_scene = SubResource("PackedScene_mmfc5")
+level_loader = NodePath("../LevelLoader")
+scene_lister = NodePath("SceneLister")
+
+[node name="SceneLister" type="Node" parent="LevelManager"]
+script = SubResource("GDScript_jdgdv")
+files = Array[String](["res://scenes/game_scene/levels/level_1.tscn", "res://scenes/game_scene/levels/level_2.tscn", "res://scenes/game_scene/levels/level_3.tscn"])
+directory = "res://scenes/game_scene/levels"
+
+[node name="LevelLoadingScreen" parent="." instance=ExtResource("9_i7m4m")]
+visible = false
+
+[node name="ViewportContainer" type="SubViewportContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch = true
+
+[node name="ConfigurableSubViewport" type="SubViewport" parent="ViewportContainer"]
+handle_input_locally = false
+audio_listener_enable_2d = true
+audio_listener_enable_3d = true
+size = Vector2i(1152, 648)
+render_target_update_mode = 4
+script = SubResource("GDScript_ud2if")

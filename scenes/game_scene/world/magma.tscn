@@ -1,0 +1,27 @@
+[gd_scene load_steps=7 format=4 uid="uid://e4twmltqbt8"]
+
+[ext_resource type="Texture2D" uid="uid://cufyq4nd6pl3c" path="res://assets/magma/magma.png" id="1_7512t"]
+[ext_resource type="Texture2D" uid="uid://bwmas13ex262j" path="res://assets/magma/cooled_magma.png" id="2_jcxkj"]
+[ext_resource type="Script" uid="uid://crchiwsa4wg51" path="res://scenes/game_scene/world/magma.gd" id="3_1usmw"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_eegf6"]
+texture = ExtResource("1_7512t")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_p2q0g"]
+texture = ExtResource("2_jcxkj")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+
+[sub_resource type="TileSet" id="TileSet_p2q0g"]
+tile_size = Vector2i(32, 32)
+physics_layer_0/collision_layer = 1
+sources/0 = SubResource("TileSetAtlasSource_eegf6")
+sources/1 = SubResource("TileSetAtlasSource_p2q0g")
+
+[node name="Magma" type="TileMapLayer"]
+tile_map_data = PackedByteArray("AAADAAMAAAAAAAAAAAAEAAMAAAAAAAAAAAAFAAMAAAAAAAAAAAAGAAMAAAAAAAAAAAAHAAMAAAAAAAAAAAAHAAQAAAAAAAAAAAAGAAQAAAAAAAAAAAAFAAQAAAAAAAAAAAAEAAQAAAAAAAAAAAADAAQAAAAAAAAAAAA=")
+tile_set = SubResource("TileSet_p2q0g")
+script = ExtResource("3_1usmw")

@@ -8,7 +8,9 @@ func _process(delta: float) -> void:
 		position.y -= RISE_SPEED * delta
 
 func _on_body_entered(body: Node2D) -> void:
-	if body is Raindrop or body is Player:
+	if body.has_method("on_water_entered"):
+		if body is FallingMagma and body.is_falling:
+			position.y += RISE_SPEED
 		body.on_water_entered()
 
 func _on_body_exited(body: Node2D) -> void:
