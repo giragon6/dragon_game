@@ -1,0 +1,23 @@
+[gd_scene load_steps=4 format=3 uid="uid://c4bhq2f51ftk2"]
+
+[ext_resource type="Texture2D" uid="uid://bq7cpoaynr1xg" path="res://assets/world/water.png" id="1_lovew"]
+[ext_resource type="Script" uid="uid://cdt5g7ma2380t" path="res://scenes/game_scene/world/water.gd" id="2_3x1tx"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_lovew"]
+size = Vector2(1332, 884)
+
+[node name="Water" type="Area2D"]
+modulate = Color(1, 1, 1, 0.5)
+script = ExtResource("2_3x1tx")
+
+[node name="WaterTop" type="Sprite2D" parent="."]
+texture = ExtResource("1_lovew")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_lovew")
+
+[node name="WaterBottom" type="Sprite2D" parent="."]
+texture = ExtResource("1_lovew")
+
+[connection signal="body_entered" from="." to="." method="_on_body_entered"]
+[connection signal="body_exited" from="." to="." method="_on_body_exited"]

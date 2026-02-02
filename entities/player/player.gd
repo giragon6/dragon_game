@@ -9,7 +9,9 @@ var rot := 0
 var screen_size : Vector2
 var rotation_direction = 0
 var raindrop_in : Raindrop = null
+var is_under_water := false
 const TERM_VEL := 600
+const DROWN_TIME := 5.0
 
 func _ready():
 	screen_size = get_parent().texture.get_size()
@@ -17,6 +19,8 @@ func _ready():
 	$Camera2D.limit_top = 0
 	$Camera2D.limit_right = screen_size.x
 	$Camera2D.limit_bottom = screen_size.y
+	
+	$DrownTimer.connect("timeout", on_drown)
 
 
 func _physics_process(delta: float) -> void:
@@ -37,6 +41,12 @@ func _physics_process(delta: float) -> void:
 		$AnimatedSprite2D.play("walk")
 	else:
 		$AnimatedSprite2D.play("idle")
+		
+	if is_under_water:
+		$DrownLabel.text = str(int($DrownTimer.time_left))
+	else:
+		$DrownLabel.text = ""
+	
 	
 	move_and_slide()
 	raindrop_in = null
@@ -47,5 +57,17 @@ func _physics_process(delta: float) -> void:
 			raindrop_in = collider
 			# get sucked into the raindrop because of surface tension or something
 			position = raindrop_in.position
-	
 	position = position.clamp(Vector2.ZERO, screen_size)
+
+func on_water_entered() -> void:
+	is_under_water = true
+	$DrownTimer.start(DROWN_TIME)
+	print('i am under the water')
+
+func on_water_exited() -> void:
+	is_under_water = false
+	$DrownTimer.stop()
+	print("i amn't under the water")
+	
+func on_drown() -> void:
+	pass

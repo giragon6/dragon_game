@@ -88,57 +88,57 @@ For example, if you don't want to export for macOS, delete this part which build
 
 ```yml
   export-mac:
-    name: macOS Export
-    runs-on: ubuntu-24.04
-    container:
-      image: barichello/godot-ci:${{ vars.GODOT_VERSION }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          lfs: true
+	name: macOS Export
+	runs-on: ubuntu-24.04
+	container:
+	  image: barichello/godot-ci:${{ vars.GODOT_VERSION }}
+	steps:
+	  - name: Checkout
+		uses: actions/checkout@v4
+		with:
+		  lfs: true
 
-      - name: Setup
-        run: |
-          mkdir -v -p ~/.local/share/godot/export_templates/
-          mkdir -v -p ~/.config/
-          mv /root/.config/godot ~/.config/godot || true
-          mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable || true
+	  - name: Setup
+		run: |
+		  mkdir -v -p ~/.local/share/godot/export_templates/
+		  mkdir -v -p ~/.config/
+		  mv /root/.config/godot ~/.config/godot || true
+		  mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable || true
 
-      - name: Mac Build
-        run: |
-          mkdir -v -p build/mac
-          EXPORT_DIR="$(readlink -f build)"
-          cd $PROJECT_PATH
-          godot --headless --verbose --export-release "macOS" "$EXPORT_DIR/mac/${EXPORT_NAME}-mac.zip"
+	  - name: Mac Build
+		run: |
+		  mkdir -v -p build/mac
+		  EXPORT_DIR="$(readlink -f build)"
+		  cd $PROJECT_PATH
+		  godot --headless --verbose --export-release "macOS" "$EXPORT_DIR/mac/${EXPORT_NAME}-mac.zip"
 
-      - name: Upload to GitHub Release (if this run is a release)
-        if: ${{ github.event_name == 'release' }}
-        uses: svenstaro/upload-release-action@v2
-        with:
-          file: build/mac/${{ env.EXPORT_NAME }}-mac.zip
+	  - name: Upload to GitHub Release (if this run is a release)
+		if: ${{ github.event_name == 'release' }}
+		uses: svenstaro/upload-release-action@v2
+		with:
+		  file: build/mac/${{ env.EXPORT_NAME }}-mac.zip
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac
-          path: build/mac
+	  - name: Upload Artifact
+		uses: actions/upload-artifact@v4
+		with:
+		  name: mac
+		  path: build/mac
 
 ```
 
 Remove the job ID (ie. `export-mac`) from the needs of the `publish-builds` job:
 ```yml
   publish-builds:
-    name: Publish Builds
-    needs: [export-web, export-windows, export-linux, export-mac]
+	name: Publish Builds
+	needs: [export-web, export-windows, export-linux, export-mac]
 ```
 
 And remove this part, which publishes it to itch.io:
 
 ```yml
   - name: Upload to Itch.io - macOS
-    run: |
-      ./butler push builds/mac ${{ env.ITCH_USERNAME }}/${{ env.ITCH_GAME }}:mac --userversion "${{ steps.version.outputs.version }}"
+	run: |
+	  ./butler push builds/mac ${{ env.ITCH_USERNAME }}/${{ env.ITCH_GAME }}:mac --userversion "${{ steps.version.outputs.version }}"
 ```
 
 #### Adding a platform
@@ -153,18 +153,18 @@ For example:
 ```yml
 - name: NEW_PLATFORM Build
   run: |
-      mkdir -v -p build/NEW_PLATFORM
-      EXPORT_DIR="$(readlink -f build)"
-      cd $PROJECT_PATH
-      godot --headless --verbose --export-release "BUILD_CONFIG_NAME" "$EXPORT_DIR/NEW_PLATFORM/$EXPORT_NAME.zip"
+	  mkdir -v -p build/NEW_PLATFORM
+	  EXPORT_DIR="$(readlink -f build)"
+	  cd $PROJECT_PATH
+	  godot --headless --verbose --export-release "BUILD_CONFIG_NAME" "$EXPORT_DIR/NEW_PLATFORM/$EXPORT_NAME.zip"
 ```
 
 In the itch.io publication step, make sure to change the path and the tag.
 
 ```yml
 - name: Upload to Itch.io - NEW_PLATFORM_TAG
-      run: |
-      ./butler push builds/NEW_PLATFORM ${{ env.ITCH_USERNAME }}/${{ env.ITCH_GAME }}:NEW_PLATFORM_TAG --userversion "${{ steps.version.outputs.version }}"
+	  run: |
+	  ./butler push builds/NEW_PLATFORM ${{ env.ITCH_USERNAME }}/${{ env.ITCH_GAME }}:NEW_PLATFORM_TAG --userversion "${{ steps.version.outputs.version }}"
 
 ```
 

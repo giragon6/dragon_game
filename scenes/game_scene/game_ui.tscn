@@ -1,7 +1,6 @@
-[gd_scene load_steps=26 format=3 uid="uid://dgtslvp173nhx"]
+[gd_scene load_steps=21 format=3 uid="uid://dgtslvp173nhx"]
 
-[ext_resource type="PackedScene" uid="uid://dcvymjcaysbj4" path="res://scenes/windows/pause_menu.tscn" id="1_ejf1p"]
-[ext_resource type="Script" uid="uid://b2xtyuha3i4eq" path="res://scenes/game_scene/items_controller.gd" id="2_seekm"]
+[ext_resource type="PackedScene" uid="uid://dh1agiwftld6g" path="res://scenes/windows/pause_menu_layer.tscn" id="1_seekm"]
 [ext_resource type="PackedScene" uid="uid://cmay2p81tduat" path="res://scenes/loading_screen/level_loading_screen.tscn" id="9_i7m4m"]
 
 [sub_resource type="GDScript" id="GDScript_6mwjj"]
@@ -716,82 +715,6 @@ func _ready() -> void:
 	msaa_3d = anti_aliasing as MSAA
 "
 
-[sub_resource type="GDScript" id="GDScript_v20na"]
-script/source = "class_name InventorySlot
-extends Button
-
-var item : Item
-var quantity_text : Label
-var quantity : int
-
-func set_item(new_item : Item):
-	item = new_item
-	quantity = 1
-	
-	if item == null:
-		icon.visible = false
-	else:
-		icon.visible = true
-		icon.texture = item.icon
-	
-	update_quantity_text()
-	
-func update_quantity_text():
-	if quantity <= 1:
-		quantity_text.text = \"\"
-	else:
-		quantity_text.text = str(quantity)
-		
-func add_item():
-	quantity += 1
-	update_quantity_text()
-
-func remove_item():
-	quantity -= 1
-	update_quantity_text()
-	
-	if quantity == 0:
-		set_item(null)
-		
-func _on_pressed():
-	if item == null:
-		return
-	
-	item.press()
-	
-	if item.remove_after_use:
-		remove_item()
-"
-
-[sub_resource type="LabelSettings" id="LabelSettings_bhu3c"]
-font_size = 32
-
-[sub_resource type="PackedScene" id="PackedScene_y85d6"]
-_bundled = {
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("InventorySlot", "custom_minimum_size", "script", "Button", "Icon", "layout_mode", "anchors_preset", "anchor_left", "anchor_top", "anchor_right", "anchor_bottom", "offset_left", "offset_top", "offset_right", "offset_bottom", "grow_horizontal", "grow_vertical", "mouse_filter", "expand_mode", "metadata/_edit_use_anchors_", "TextureRect", "QuantityText", "label_settings", "Label"),
-"node_count": 3,
-"node_paths": [],
-"nodes": PackedInt32Array(-1, -1, 3, 0, -1, 2, 1, 0, 2, 1, 0, 0, 0, 20, 4, -1, 15, 5, 2, 6, 3, 7, 4, 8, 4, 9, 4, 10, 4, 11, 5, 12, 5, 13, 6, 14, 6, 15, 7, 16, 7, 17, 7, 18, 2, 19, 8, 0, 0, 0, 23, 21, -1, 11, 5, 2, 6, 9, 7, 10, 8, 10, 9, 10, 10, 10, 11, 11, 12, 12, 15, 13, 16, 13, 22, 14, 0),
-"variants": [Vector2(64, 64), SubResource("GDScript_v20na"), 1, 8, 0.5, -20.0, 20.0, 2, true, 3, 1.0, -40.0, -23.0, 0, SubResource("LabelSettings_bhu3c")],
-"version": 3
-}
-
-[sub_resource type="PackedScene" id="PackedScene_vbgr5"]
-_bundled = {
-"conn_count": 0,
-"conns": PackedInt32Array(),
-"editable_instances": [],
-"names": PackedStringArray("InventoryMenu", "layout_mode", "anchors_preset", "anchor_right", "anchor_bottom", "grow_horizontal", "grow_vertical", "size_flags_horizontal", "size_flags_vertical", "Control", "ContentContainer", "unique_name_in_owner", "anchor_left", "anchor_top", "offset_left", "offset_top", "offset_right", "offset_bottom", "theme_override_constants/margin_left", "theme_override_constants/margin_top", "theme_override_constants/margin_right", "theme_override_constants/margin_bottom", "MarginContainer", "BoxContainer", "vertical", "TitleMargin", "theme_override_constants/separation", "TitleLabel", "theme_override_font_sizes/font_size", "text", "horizontal_alignment", "Label", "HSeparator", "BodyMargin", "visible", "DescriptionLabel", "bbcode_enabled", "fit_content", "vertical_alignment", "RichTextLabel", "SlotContainer", "columns", "GridContainer", "InventorySlot", "InventorySlot2", "InventorySlot3", "InventorySlot4", "InventorySlot5", "InventorySlot6", "InventorySlot7", "InventorySlot8", "InventorySlot9", "InventorySlot10", "InventorySlot11", "InventorySlot12", "InventorySlot13", "InventorySlot14", "InventorySlot15", "InventorySlot16", "InfoText", "custom_minimum_size"),
-"node_count": 27,
-"node_paths": [],
-"nodes": PackedInt32Array(-1, -1, 9, 0, -1, 8, 1, 0, 2, 1, 3, 2, 4, 2, 5, 3, 6, 3, 7, 0, 8, 0, 0, 0, 0, 22, 10, -1, 17, 11, 4, 1, 5, 2, 6, 12, 7, 13, 7, 3, 7, 4, 7, 14, 8, 15, 9, 16, 10, 17, 11, 5, 3, 6, 3, 18, 12, 19, 12, 20, 12, 21, 12, 0, 1, 0, 23, 23, -1, 2, 1, 3, 24, 4, 0, 2, 0, 22, 25, -1, 6, 11, 4, 1, 3, 18, 13, 19, 13, 20, 13, 21, 6, 0, 3, 0, 23, 23, -1, 3, 1, 3, 26, 14, 24, 4, 0, 4, 0, 31, 27, -1, 5, 11, 4, 1, 3, 28, 12, 29, 15, 30, 5, 0, 4, 0, 32, 32, -1, 1, 1, 3, 0, 2, 0, 22, 33, -1, 4, 11, 4, 34, 16, 1, 3, 8, 0, 0, 7, 0, 39, 35, -1, 6, 11, 4, 1, 3, 36, 4, 37, 4, 30, 5, 38, 5, 0, 2, 0, 42, 40, -1, 3, 1, 3, 8, 0, 41, 6, 0, 9, 0, 2147483647, 43, 17, 1, 1, 3, 0, 9, 0, 2147483647, 44, 17, 1, 1, 3, 0, 9, 0, 2147483647, 45, 17, 1, 1, 3, 0, 9, 0, 2147483647, 46, 17, 1, 1, 3, 0, 9, 0, 2147483647, 47, 17, 1, 1, 3, 0, 9, 0, 2147483647, 48, 17, 1, 1, 3, 0, 9, 0, 2147483647, 49, 17, 1, 1, 3, 0, 9, 0, 2147483647, 50, 17, 1, 1, 3, 0, 9, 0, 2147483647, 51, 17, 1, 1, 3, 0, 9, 0, 2147483647, 52, 17, 1, 1, 3, 0, 9, 0, 2147483647, 53, 17, 1, 1, 3, 0, 9, 0, 2147483647, 54, 17, 1, 1, 3, 0, 9, 0, 2147483647, 55, 17, 1, 1, 3, 0, 9, 0, 2147483647, 56, 17, 1, 1, 3, 0, 9, 0, 2147483647, 57, 17, 1, 1, 3, 0, 9, 0, 2147483647, 58, 17, 1, 1, 3, 0, 1, 0, 39, 59, -1, 4, 60, 18, 1, 3, 8, 6, 29, 19, 0),
-"variants": [3, 15, 1.0, 2, true, 1, 8, 0.5, -289.5, -142.0, 289.5, 142.0, 16, -14, 0, "Inventory", false, SubResource("PackedScene_y85d6"), Vector2(0, 90), "Information about the selected item appears here!"],
-"version": 3
-}
-
 [node name="GameUI" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -802,10 +725,9 @@ grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="PauseMenuController" type="Node" parent="." node_paths=PackedStringArray("focused_viewport")]
+[node name="PauseMenuController" type="Node" parent="."]
 script = SubResource("GDScript_6mwjj")
-pause_menu_packed = ExtResource("1_ejf1p")
-focused_viewport = NodePath("../ViewportContainer/ConfigurableSubViewport")
+pause_menu_packed = ExtResource("1_seekm")
 
 [node name="LevelLoader" type="Node" parent="." node_paths=PackedStringArray("level_container", "level_loading_screen")]
 script = SubResource("GDScript_uplwd")
@@ -847,16 +769,3 @@ audio_listener_enable_3d = true
 size = Vector2i(1152, 648)
 render_target_update_mode = 4
 script = SubResource("GDScript_ud2if")
-
-[node name="ItemsController" type="Control" parent="." node_paths=PackedStringArray("focused_viewport")]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-grow_horizontal = 2
-grow_vertical = 2
-script = ExtResource("2_seekm")
-inventory_menu_packed = SubResource("PackedScene_vbgr5")
-focused_viewport = NodePath("../ViewportContainer/ConfigurableSubViewport")

@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://cataensx6dvtd"]
+[gd_scene load_steps=10 format=3 uid="uid://cataensx6dvtd"]
 
 [ext_resource type="Script" uid="uid://1t0u6cd7tj2l" path="res://entities/player/player.gd" id="1_sglur"]
 [ext_resource type="Texture2D" uid="uid://hk7sap6425qc" path="res://assets/player/amphiptere_idle.png" id="2_abrql"]
@@ -53,6 +53,11 @@ animations = [{
 "speed": 5.0
 }]
 
+[sub_resource type="LabelSettings" id="LabelSettings_abrql"]
+font_size = 21
+font_color = Color(0, 0.521919, 0.521919, 1)
+outline_size = 4
+
 [node name="Player" type="CharacterBody2D"]
 script = ExtResource("1_sglur")
 
@@ -64,3 +69,13 @@ sprite_frames = SubResource("SpriteFrames_qiwj3")
 animation = &"walk"
 
 [node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(2, 2)
+
+[node name="DrownTimer" type="Timer" parent="."]
+
+[node name="DrownLabel" type="Label" parent="."]
+offset_left = -44.0
+offset_top = -38.0
+offset_right = -4.0
+offset_bottom = -15.0
+label_settings = SubResource("LabelSettings_abrql")
