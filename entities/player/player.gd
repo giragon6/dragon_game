@@ -1,7 +1,7 @@
 extends CharacterBody2D
 class_name Player
 
-@export var speed = 100
+@export var speed = 400
 @export var jump_strength = 1000
 @export var rotation_speed = 2.5
 @export var gravity : float = ProjectSettings.get_setting("physics/2d/default_gravity")

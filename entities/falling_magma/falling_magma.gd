@@ -11,7 +11,6 @@ func _ready() -> void:
 	$ErosionTimer.connect("timeout", _on_erosion)
 
 func on_water_entered() -> void:
-	print('magma in water')
 	is_falling = false
 	self.gravity_scale = 0
 	self.linear_velocity = Vector2.ZERO

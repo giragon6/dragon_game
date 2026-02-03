@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=4 uid="uid://e4twmltqbt8"]
+[gd_scene load_steps=7 format=3 uid="uid://e4twmltqbt8"]
 
 [ext_resource type="Texture2D" uid="uid://cufyq4nd6pl3c" path="res://assets/magma/magma.png" id="1_7512t"]
 [ext_resource type="Texture2D" uid="uid://bwmas13ex262j" path="res://assets/magma/cooled_magma.png" id="2_jcxkj"]
@@ -22,6 +22,11 @@ sources/0 = SubResource("TileSetAtlasSource_eegf6")
 sources/1 = SubResource("TileSetAtlasSource_p2q0g")
 
 [node name="Magma" type="TileMapLayer"]
-tile_map_data = PackedByteArray("AAADAAMAAAAAAAAAAAAEAAMAAAAAAAAAAAAFAAMAAAAAAAAAAAAGAAMAAAAAAAAAAAAHAAMAAAAAAAAAAAAHAAQAAAAAAAAAAAAGAAQAAAAAAAAAAAAFAAQAAAAAAAAAAAAEAAQAAAAAAAAAAAADAAQAAAAAAAAAAAA=")
 tile_set = SubResource("TileSet_p2q0g")
 script = ExtResource("3_1usmw")
+
+[node name="MagmaSpawnTimer" type="Timer" parent="."]
+wait_time = 2.0
+autostart = true
+
+[connection signal="timeout" from="MagmaSpawnTimer" to="." method="_on_magma_spawn_timer_timeout"]
