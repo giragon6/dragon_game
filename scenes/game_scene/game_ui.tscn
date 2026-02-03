@@ -1,6 +1,8 @@
-[gd_scene load_steps=21 format=3 uid="uid://dgtslvp173nhx"]
+[gd_scene load_steps=23 format=3 uid="uid://dgtslvp173nhx"]
 
 [ext_resource type="PackedScene" uid="uid://dh1agiwftld6g" path="res://scenes/windows/pause_menu_layer.tscn" id="1_seekm"]
+[ext_resource type="Script" uid="uid://s3oj3aa6s2wx" path="res://scenes/game_scene/game_over_controller.gd" id="2_ejf1p"]
+[ext_resource type="PackedScene" uid="uid://c1ybqxnmv5vmn" path="res://scenes/windows/game_over_layer.tscn" id="3_dnslt"]
 [ext_resource type="PackedScene" uid="uid://cmay2p81tduat" path="res://scenes/loading_screen/level_loading_screen.tscn" id="9_i7m4m"]
 
 [sub_resource type="GDScript" id="GDScript_6mwjj"]
@@ -728,6 +730,10 @@ size_flags_vertical = 3
 [node name="PauseMenuController" type="Node" parent="."]
 script = SubResource("GDScript_6mwjj")
 pause_menu_packed = ExtResource("1_seekm")
+
+[node name="GameOverController" type="Node" parent="."]
+script = ExtResource("2_ejf1p")
+game_over_menu_packed = ExtResource("3_dnslt")
 
 [node name="LevelLoader" type="Node" parent="." node_paths=PackedStringArray("level_container", "level_loading_screen")]
 script = SubResource("GDScript_uplwd")

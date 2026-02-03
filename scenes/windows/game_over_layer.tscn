@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://c1ybqxnmv5vmn"]
+
+[ext_resource type="PackedScene" uid="uid://p36hx76v15ls" path="res://scenes/windows/game_over.tscn" id="1_p7nsf"]
+[ext_resource type="Script" uid="uid://dhtiivjjojfex" path="res://scenes/windows/game_over_layer.gd" id="1_ydm0e"]
+
+[node name="GameOverLayer" type="CanvasLayer"]
+script = ExtResource("1_ydm0e")
+
+[node name="GameOver" parent="." instance=ExtResource("1_p7nsf")]
+process_mode = 3
+offset_top = -86.0
+offset_bottom = 86.0

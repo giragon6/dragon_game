@@ -38,6 +38,7 @@ size_flags_vertical = 3
 text = "Resume"
 
 [node name="RestartButton" type="Button" parent="PauseMenu/ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons" index="1"]
+visible = false
 layout_mode = 2
 text = "Restart"
 

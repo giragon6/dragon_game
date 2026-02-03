@@ -79,8 +79,8 @@ func _show_loading_stalled_error_message() -> void:
 func _show_scene_switching_error_message() -> void:
 	if %ErrorMessage.visible:
 		return
-	%ErrorMessage.dialog_text = "Loading Error: Failed to switch scenes."
-	%ErrorMessage.popup()
+	#%ErrorMessage.dialog_text = "Loading Error: Failed to switch scenes."
+	#%ErrorMessage.popup()
 
 func _hide_popups() -> void:
 	%ErrorMessage.hide()

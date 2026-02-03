@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://cshridygo0sjg"]
+[gd_scene load_steps=8 format=3 uid="uid://cshridygo0sjg"]
 
 [ext_resource type="PackedScene" uid="uid://cataensx6dvtd" path="res://entities/player/player.tscn" id="1_k8tay"]
 [ext_resource type="PackedScene" uid="uid://dsn50dgtn0a14" path="res://scenes/game_scene/world/rain.tscn" id="2_oxjrw"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://c4bhq2f51ftk2" path="res://scenes/game_scene/world/water.tscn" id="4_jwiim"]
 [ext_resource type="PackedScene" uid="uid://dgtslvp173nhx" path="res://scenes/game_scene/game_ui.tscn" id="6_2maww"]
 [ext_resource type="PackedScene" uid="uid://e4twmltqbt8" path="res://scenes/game_scene/world/magma.tscn" id="6_7ih7l"]
+[ext_resource type="Script" uid="uid://bm060rf875n1b" path="res://scenes/game_scene/world/score_manager.gd" id="7_7ih7l"]
 
 [node name="World" type="Sprite2D"]
 texture = ExtResource("3_ptotq")
@@ -22,3 +23,6 @@ position = Vector2(665.5, 1324.5)
 visible = false
 
 [node name="Magma" parent="." instance=ExtResource("6_7ih7l")]
+
+[node name="ScoreManager" type="Node" parent="."]
+script = ExtResource("7_7ih7l")

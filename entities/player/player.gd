@@ -10,6 +10,7 @@ var screen_size : Vector2
 var rotation_direction = 0
 var raindrop_in : Raindrop = null
 var is_under_water := false
+var score := 0
 const TERM_VEL := 600
 const DROWN_TIME := 5.0
 
@@ -20,10 +21,10 @@ func _ready():
 	$Camera2D.limit_right = screen_size.x
 	$Camera2D.limit_bottom = screen_size.y
 	
-	$DrownTimer.connect("timeout", on_drown)
+	$DrownTimer.connect("timeout", _on_drown)
 
 
-func _physics_process(delta: float) -> void:
+func _physics_process(delta: float) -> void:	
 	if not raindrop_in:
 		rotation_direction = Input.get_axis("left", "right")
 		velocity = transform.x * speed
@@ -75,5 +76,6 @@ func on_water_exited() -> void:
 	is_under_water = false
 	$DrownTimer.stop()
 	
-func on_drown() -> void:
-	pass
+func _on_drown() -> void:
+	print("im drown :(")
+	SignalBus.game_over.emit()
