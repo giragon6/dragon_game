@@ -1,17 +1,6 @@
 # Attribution
-## Collaborators
-
-### Role
-Person 1  
-Person 2  
-[Person w/ Link]()  
 
 ## Sourced
-### Asset Type
-#### Use Case
-Author: [Name]()  
-Source: [Domain : webpage.html]()  
-License: [License]()
 
 #### Godot Engine Logo
 Author: Andrea Calabró  
