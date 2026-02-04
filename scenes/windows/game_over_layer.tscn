@@ -4,9 +4,11 @@
 [ext_resource type="Script" uid="uid://dhtiivjjojfex" path="res://scenes/windows/game_over_layer.gd" id="1_ydm0e"]
 
 [node name="GameOverLayer" type="CanvasLayer"]
+process_mode = 3
 script = ExtResource("1_ydm0e")
 
 [node name="GameOver" parent="." instance=ExtResource("1_p7nsf")]
 process_mode = 3
 offset_top = -86.0
 offset_bottom = 86.0
+exclusive_background_color = Color(0, 0, 0, 0.5)

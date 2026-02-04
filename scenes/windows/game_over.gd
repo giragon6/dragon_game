@@ -94,10 +94,6 @@ func _on_main_menu_button_pressed() -> void:
 func _on_exit_button_pressed() -> void:
 	_show_window(exit_confirmation)
 
-func _on_restart_confirmation_confirmed() -> void:
-	SceneLoader.reload_current_scene()
-	close()
-
 func _on_main_menu_confirmation_confirmed():
 	_load_scene(get_main_menu_scene_path())
 
