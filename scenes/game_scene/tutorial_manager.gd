@@ -13,8 +13,6 @@ func _ready() -> void:
 	tutorial_nodes[curr_node].visible = true
 	
 func _continue() -> void:
-	print(curr_node)
-	print(tutorial_nodes.size())
 	if curr_node == tutorial_nodes.size()-1:
 		SceneLoader.load_scene("res://scenes/menus/main_menu/main_menu_with_animations.tscn")
 		return

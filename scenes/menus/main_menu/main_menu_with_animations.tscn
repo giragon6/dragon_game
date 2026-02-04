@@ -1,9 +1,10 @@
-[gd_scene load_steps=19 format=3 uid="uid://dhvno04g7d7ox"]
+[gd_scene load_steps=20 format=3 uid="uid://dhvno04g7d7ox"]
 
 [ext_resource type="PackedScene" uid="uid://c6k5nnpbypshi" path="res://addons/maaacks_game_template/base/nodes/menus/main_menu/main_menu.tscn" id="1_rr1rn"]
 [ext_resource type="Script" uid="uid://b3n2gmh2ebss4" path="res://scenes/menus/main_menu/main_menu_with_animations.gd" id="2_sr523"]
 [ext_resource type="PackedScene" uid="uid://5ck4pajusr2i" path="res://scenes/windows/main_menu_options_window.tscn" id="3_ixa71"]
 [ext_resource type="PackedScene" uid="uid://bbd4m2g30vw6c" path="res://scenes/windows/main_menu_credits_window.tscn" id="4_2k5l7"]
+[ext_resource type="Texture2D" uid="uid://cx6urdvjyu6cg" path="res://assets/menus/menu_bg.png" id="5_ixa71"]
 [ext_resource type="PackedScene" uid="uid://cwt4p3bufkke5" path="res://addons/maaacks_game_template/base/nodes/windows/confirmation_overlaid_window.tscn" id="5_sr523"]
 
 [sub_resource type="Animation" id="1"]
@@ -334,6 +335,9 @@ parameters/conditions/intro_done = false
 [node name="BackgroundMusicPlayer" parent="." index="3"]
 bus = &"Master"
 
+[node name="BackgroundTextureRect" parent="." index="4"]
+texture = ExtResource("5_ixa71")
+
 [node name="TitleContainer" parent="MenuContainer/TitleMargin" index="0"]
 modulate = Color(1, 1, 1, 0)
 
@@ -342,6 +346,9 @@ text = "RAINSTORM"
 
 [node name="SubTitleContainer" parent="MenuContainer/SubTitleMargin" index="0"]
 modulate = Color(1, 1, 1, 0)
+
+[node name="SubTitleLabel" parent="MenuContainer/SubTitleMargin/SubTitleContainer" index="0"]
+text = "Escape the flood!"
 
 [node name="MenuButtonsContainer" parent="MenuContainer/MenuButtonsMargin" index="0"]
 modulate = Color(1, 1, 1, 0)

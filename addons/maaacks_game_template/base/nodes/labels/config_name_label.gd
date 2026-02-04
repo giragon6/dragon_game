@@ -8,10 +8,10 @@ const NO_NAME_STRING : String = "Title"
 @export var auto_update : bool = true
 
 func update_name_label():
-	var config_name : String = ProjectSettings.get_setting("application/config/name", NO_NAME_STRING)
-	if config_name.is_empty():
-		config_name = NO_NAME_STRING
-	text = config_name
+	#var config_name : String = ProjectSettings.get_setting("application/config/name", NO_NAME_STRING)
+	#if config_name.is_empty():
+		#config_name = NO_NAME_STRING
+	text = "RAINSTORM"
 
 func _ready():
 	if auto_update:
