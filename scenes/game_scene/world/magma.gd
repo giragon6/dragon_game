@@ -16,5 +16,4 @@ func _on_fall_tile(tile_pos: Vector2i) -> void:
 
 func _on_magma_spawn_timer_timeout() -> void:
 	var coords = Vector2i(randi() % world_size_tiles.x, randi() % magma_spawn_max_tile_row)
-	print("spawning magma at %v" % coords)
 	self.set_cell(coords, 0, Vector2(0,0))

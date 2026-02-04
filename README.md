@@ -2,7 +2,7 @@
 
 A simple game made in Godot about surviving during a flood. Dodge raindrops and strategically use magma to reduce the flood waters!
 
-Assets are a work in progress -- my pixel art leaves something to be desired.
+Currently in a very early and scuffed stage. Assets are mostly temporary and gameplay is subject to change.
 
 ## Attribution
 

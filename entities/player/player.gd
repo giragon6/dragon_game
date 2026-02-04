@@ -1,7 +1,7 @@
 extends CharacterBody2D
 class_name Player
 
-@export var speed = 400
+@export var speed = 200
 @export var jump_strength = 1000
 @export var rotation_speed = 2.5
 @export var gravity : float = ProjectSettings.get_setting("physics/2d/default_gravity")
@@ -12,7 +12,7 @@ var raindrop_in : Raindrop = null
 var is_under_water := false
 var score := 0
 const TERM_VEL := 600
-const DROWN_TIME := 5.0
+const DROWN_TIME := 2.0
 
 func _ready():
 	screen_size = get_parent().texture.get_size()
@@ -44,10 +44,9 @@ func _physics_process(delta: float) -> void:
 		$AnimatedSprite2D.play("idle")
 		
 	if is_under_water:
-		$DrownLabel.text = str(int($DrownTimer.time_left))
+		$DrownLabel.text = str(ceili($DrownTimer.time_left))
 	else:
 		$DrownLabel.text = ""
-	
 	
 	move_and_slide()
 	raindrop_in = null
