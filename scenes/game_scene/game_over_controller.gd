@@ -16,7 +16,6 @@ func _ready() -> void:
 	get_tree().current_scene.call_deferred("add_child", game_over_menu)
 
 func _on_game_over() -> void:
-	print("game voer :(")
 	if game_over_menu.visible: return
 	if not focused_viewport:
 		focused_viewport = get_viewport()

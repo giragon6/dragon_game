@@ -99,6 +99,7 @@ text = "Exit Game"
 
 [node name="CloseButton" type="Button" parent="ContentContainer/BoxContainer/MenuButtonsMargin/MenuButtons"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 text = "Resume"
 

@@ -1,0 +1,152 @@
+[gd_scene load_steps=13 format=3 uid="uid://cc30hdok21l4j"]
+
+[ext_resource type="Script" uid="uid://vibp7v2a4sr2" path="res://scenes/game_scene/tutorial_manager.gd" id="1_ylmjq"]
+[ext_resource type="Texture2D" uid="uid://hk7sap6425qc" path="res://assets/player/amphiptere_idle.png" id="2_wx61u"]
+[ext_resource type="Texture2D" uid="uid://cufyq4nd6pl3c" path="res://assets/magma/magma.png" id="3_mtflm"]
+[ext_resource type="Texture2D" uid="uid://bwmas13ex262j" path="res://assets/magma/cooled_magma.png" id="4_oqwdu"]
+[ext_resource type="Texture2D" uid="uid://bq7cpoaynr1xg" path="res://assets/world/water.png" id="5_bbn7n"]
+[ext_resource type="Texture2D" uid="uid://b741ls53wdmpd" path="res://assets/rain/raindrop.png" id="6_vh2yp"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_80qla"]
+atlas = ExtResource("2_wx61u")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_i01uu"]
+atlas = ExtResource("2_wx61u")
+region = Rect2(32, 0, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_hrekp"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_80qla")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_i01uu")
+}],
+"loop": true,
+"name": &"default",
+"speed": 5.0
+}]
+
+[sub_resource type="LabelSettings" id="LabelSettings_yw44t"]
+font_size = 28
+
+[sub_resource type="LabelSettings" id="LabelSettings_n7r4l"]
+font_size = 28
+
+[sub_resource type="LabelSettings" id="LabelSettings_t7ncg"]
+font_size = 28
+
+[node name="TutorialScene" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_ylmjq")
+
+[node name="Tutorial1" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MockPlayer" type="AnimatedSprite2D" parent="Tutorial1"]
+position = Vector2(576, 320)
+scale = Vector2(4, 4)
+sprite_frames = SubResource("SpriteFrames_hrekp")
+
+[node name="Label" type="Label" parent="Tutorial1"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -192.5
+offset_right = 192.5
+offset_bottom = 49.0
+grow_horizontal = 2
+text = "You play as a tiny dragon trying to survive a flood.
+Use WASD or the arrow keys to fly around."
+label_settings = SubResource("LabelSettings_yw44t")
+horizontal_alignment = 1
+
+[node name="Tutorial2" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Magma" type="Sprite2D" parent="Tutorial2"]
+position = Vector2(640, 320)
+scale = Vector2(4, 4)
+texture = ExtResource("3_mtflm")
+
+[node name="CooledMagma" type="Sprite2D" parent="Tutorial2"]
+position = Vector2(640, 512)
+scale = Vector2(4, 4)
+texture = ExtResource("4_oqwdu")
+
+[node name="Water" type="Sprite2D" parent="Tutorial2"]
+z_index = -1
+position = Vector2(984, 2200)
+scale = Vector2(4, 4)
+texture = ExtResource("5_bbn7n")
+
+[node name="MockPlayer" type="AnimatedSprite2D" parent="Tutorial2"]
+position = Vector2(512, 288)
+scale = Vector2(4, 4)
+sprite_frames = SubResource("SpriteFrames_hrekp")
+
+[node name="Label" type="Label" parent="Tutorial2"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -582.0
+offset_right = 583.0
+offset_bottom = 45.0
+grow_horizontal = 2
+text = "Run into the magma to drop it into the water and cause some to evaporate."
+label_settings = SubResource("LabelSettings_n7r4l")
+horizontal_alignment = 1
+
+[node name="Tutorial3" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MockPlayer" type="AnimatedSprite2D" parent="Tutorial3"]
+position = Vector2(576, 320)
+scale = Vector2(4, 4)
+sprite_frames = SubResource("SpriteFrames_hrekp")
+
+[node name="Raindrop" type="Sprite2D" parent="Tutorial3"]
+position = Vector2(448, 256)
+scale = Vector2(4, 4)
+texture = ExtResource("6_vh2yp")
+
+[node name="Label" type="Label" parent="Tutorial3"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -192.5
+offset_right = 192.5
+offset_bottom = 49.0
+grow_horizontal = 2
+text = "Avoid getting caught in raindrops and stay alive as long as possible.
+Good luck!"
+label_settings = SubResource("LabelSettings_t7ncg")
+horizontal_alignment = 1

@@ -64,3 +64,6 @@ func _on_continue_game_button_pressed() -> void:
 func _on_new_game_confirmation_confirmed() -> void:
 	GameState.reset()
 	load_game_scene()
+
+func _on_tutorial_button_pressed() -> void:
+	SceneLoader.load_scene("res://scenes/game_scene/tutorials/tutorial_scene.tscn")

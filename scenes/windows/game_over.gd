@@ -89,11 +89,9 @@ func _ready() -> void:
 	exit_confirmation.confirmed.connect(_on_exit_confirmation_confirmed)
 
 func _on_main_menu_button_pressed() -> void:
-	print('MAIN MENU')
 	_show_window(main_menu_confirmation)
 
 func _on_exit_button_pressed() -> void:
-	print('EXIT')
 	_show_window(exit_confirmation)
 
 func _on_restart_confirmation_confirmed() -> void:

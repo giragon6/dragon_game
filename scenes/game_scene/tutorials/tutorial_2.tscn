@@ -1,6 +1,6 @@
-[gd_scene load_steps=7 format=3 uid="uid://djxims0al7mmp"]
+[gd_scene load_steps=7 format=3 uid="uid://u8ilsujvrt54"]
 
-[ext_resource type="PackedScene" path="res://scenes/game_scene/game_ui.tscn::PackedScene_ul61k" id="1_b2dkv"]
+[ext_resource type="PackedScene" path="res://scenes/game_scene/tutorials/tutorial_1.tscn::PackedScene_ul61k" id="1_sjjon"]
 
 [sub_resource type="GDScript" id="GDScript_ejf1p"]
 script/source = "@tool
@@ -248,7 +248,7 @@ _bundled = {
 "version": 3
 }
 
-[node name="OverlaidWindow" instance=ExtResource("1_b2dkv")]
+[node name="OverlaidWindow" instance=ExtResource("1_sjjon")]
 custom_minimum_size = Vector2(420, 200)
 ui_cancel_closes = true
 update_content = true
@@ -264,5 +264,5 @@ theme_override_font_sizes/font_size = 20
 text = "Tutorial"
 
 [node name="DescriptionLabel" parent="ContentContainer/BoxContainer/BodyMargin" index="0"]
-text = "You play as a tiny dragon trying to survive a flood.
-Stay alive as long as possible by keeping out of the water!"
+text = "Use WASD or the arrow keys to fly around.
+Run into the magma to drop it into the water and cause some to evaporate."
