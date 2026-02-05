@@ -1,20 +1,25 @@
 extends CharacterBody2D
 class_name Player
 
-@export var speed = 200
-@export var jump_strength = 1000
-@export var rotation_speed = 2.5
 @export var gravity : float = ProjectSettings.get_setting("physics/2d/default_gravity")
-var rot := 0
 var screen_size : Vector2
-var rotation_direction = 0
+
 var raindrop_in : Raindrop = null
 var is_under_water := false
+var is_diving := false
+
 var score := 0
-const TERM_VEL := 600
 const DROWN_TIME := 2.0
 
+var speed = 0
+var acceleration = 200
+var rotation_speed = 1.5
+var speed_max = 1000
+var rotation_direction = 0
+
 func _ready():
+	$AnimatedSprite2D.play("fly")
+	
 	screen_size = get_parent().texture.get_size()
 	$Camera2D.limit_left = 0
 	$Camera2D.limit_top = 0
@@ -23,32 +28,35 @@ func _ready():
 	
 	$DrownTimer.connect("timeout", _on_drown)
 
-
 func _physics_process(delta: float) -> void:	
-	if not raindrop_in:
-		rotation_direction = Input.get_axis("left", "right")
-		velocity = transform.x * speed
-		rotation += rotation_direction * rotation_speed * delta	
-		if not is_on_floor():
-			velocity.y += gravity * delta
-	else:
+	if raindrop_in:
 		velocity.x = 0
 		velocity.y = raindrop_in.linear_velocity.y
-		
-	if Input.is_action_just_pressed("up"):
-		velocity.y = -jump_strength
-
-	if velocity.length() > 0:
-		$AnimatedSprite2D.play("walk")
 	else:
-		$AnimatedSprite2D.play("idle")
+		rotation_direction = Input.get_axis("left", "right")
+		speed += Input.get_axis("down", "up") * acceleration * delta
+		clamp(speed,0,speed_max)
+		velocity = transform.x * speed
+		rotation += rotation_direction * rotation_speed * delta
+		print(rotation)
+		if abs(rotation) > 1.0:
+			$AnimatedSprite2D.flip_v = true
+		else:
+			$AnimatedSprite2D.flip_v = false
+		velocity.y += gravity * delta
 		
+	_update_drown()
+	move_and_slide()
+	_handle_collisions()
+	position = position.clamp(Vector2.ZERO, screen_size)
+	
+func _update_drown() -> void:
 	if is_under_water:
 		$DrownLabel.text = str(ceili($DrownTimer.time_left))
 	else:
 		$DrownLabel.text = ""
-	
-	move_and_slide()
+
+func _handle_collisions() -> void:
 	raindrop_in = null
 	for i in get_slide_collision_count():
 		var collision = get_slide_collision(i)
@@ -63,12 +71,11 @@ func _physics_process(delta: float) -> void:
 			var local_pos = collider.to_local(world_pos)
 			var tile_coords = collider.local_to_map(local_pos)
 			if collider.get_cell_source_id(tile_coords) == 0: # magma
-				SignalBus.fall_tile.emit(tile_coords)
-			
-	position = position.clamp(Vector2.ZERO, screen_size)
-	
+				SignalBus.fall_tile.emit(tile_coords)	
+
 func on_water_entered() -> void:
 	is_under_water = true
+	speed = 0
 	$DrownTimer.start(DROWN_TIME)
 
 func on_water_exited() -> void:
@@ -76,5 +83,4 @@ func on_water_exited() -> void:
 	$DrownTimer.stop()
 	
 func _on_drown() -> void:
-	print("im drown :(")
 	SignalBus.game_over.emit()

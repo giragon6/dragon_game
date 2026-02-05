@@ -1,15 +1,28 @@
-[gd_scene load_steps=10 format=3 uid="uid://cataensx6dvtd"]
+[gd_scene load_steps=14 format=3 uid="uid://cataensx6dvtd"]
 
 [ext_resource type="Script" uid="uid://1t0u6cd7tj2l" path="res://entities/player/player.gd" id="1_sglur"]
 [ext_resource type="Texture2D" uid="uid://hk7sap6425qc" path="res://assets/player/amphiptere_idle.png" id="2_abrql"]
+[ext_resource type="Texture2D" uid="uid://dardo1rvctusf" path="res://assets/player/amphiptere_fly.png" id="2_sglur"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_sfv1e"]
 radius = 17.0
 height = 34.0
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sglur"]
-atlas = ExtResource("2_abrql")
+[sub_resource type="AtlasTexture" id="AtlasTexture_qiwj3"]
+atlas = ExtResource("2_sglur")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_26q78"]
+atlas = ExtResource("2_sglur")
 region = Rect2(32, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bectd"]
+atlas = ExtResource("2_sglur")
+region = Rect2(64, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_wvtmh"]
+atlas = ExtResource("2_sglur")
+region = Rect2(96, 0, 32, 32)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_bls4j"]
 atlas = ExtResource("2_abrql")
@@ -27,7 +40,16 @@ region = Rect2(0, 0, 32, 32)
 animations = [{
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_sglur")
+"texture": SubResource("AtlasTexture_qiwj3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_26q78")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bectd")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_wvtmh")
 }],
 "loop": true,
 "name": &"fly",
@@ -65,8 +87,11 @@ script = ExtResource("1_sglur")
 shape = SubResource("CapsuleShape2D_sfv1e")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+rotation = 0.968658
+scale = Vector2(-1, 1)
 sprite_frames = SubResource("SpriteFrames_qiwj3")
-animation = &"walk"
+animation = &"fly"
+frame_progress = 0.583195
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(2, 2)
